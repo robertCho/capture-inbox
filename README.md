@@ -108,10 +108,10 @@ Expected: File exists
 
 ```cmd
 REM Install dependencies (use exact lockfile)
-npm ci
+npm.cmd ci
 
 REM Build TypeScript to JavaScript
-npm run build
+npm.cmd run build
 
 REM Verify dist directory was created
 dir dist
@@ -462,7 +462,7 @@ ShareX has an **Actions** feature (not Custom Uploader) that runs programs after
    **Critical**: 
    - `node.exe` path is NOT quoted
    - JavaScript file path IS quoted
-   - `$input` is NOT quoted (ShareX replaces it)
+   - `"$input"` IS quoted (per official ShareX Actions examples)
    - Vault path IS quoted
 
    **Example Arguments**:
@@ -514,7 +514,7 @@ ShareX has an **Actions** feature (not Custom Uploader) that runs programs after
 - "File not found": `node.exe` path wrong or JavaScript path wrong
 - Action doesn't run: "Perform actions" not checked
 - Path with spaces: Ensure quotes around JavaScript file path and vault path
-- `$input` not working: You wrote `$output` or quoted `$input` (don't quote it)
+- `$input` not working: Verify you wrote `"$input"` (not `$output` or other placeholder)
 
 ---
 
@@ -525,7 +525,7 @@ The repository includes 29 automated tests (run on Linux, passed 100%).
 ### Step 15: Run Automated Tests
 
 ```cmd
-npm test
+npm.cmd test
 ```
 
 **Expected**:
