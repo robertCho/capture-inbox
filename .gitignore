@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Test artifacts
+test-temp-*/
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+
+# Personal vault data (NEVER commit real capture cards)
+vault/
+*.vault/
+obsidian-vault/
+
+# Personal screenshots (NEVER commit real screenshots)
+screenshots/
+captures/
+
+# Config files with personal paths
+.capture-inbox.json
+config.local.json

@@ -1,0 +1,35 @@
+ShareX After-Capture Action Configuration Example
+================================================
+
+REPLACE THE PLACEHOLDER PATHS WITH YOUR ACTUAL PATHS:
+
+Name: Capture to Obsidian
+
+File path:
+  C:\Program Files\nodejs\node.exe
+
+Arguments:
+  "C:\Users\YOURNAME\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\Users\YOURNAME\Documents\MyVault"
+
+Working directory:
+  (leave empty)
+
+Extensions:
+  (leave empty)
+
+Output window:
+  ☐ Hidden window  (check this to hide console window)
+
+Notes:
+- Replace YOURNAME with your Windows username
+- Replace path to capture-inbox with where you cloned this repository
+- Replace vault path with your actual Obsidian vault location
+- Use quotes around paths that contain spaces
+- $output is a ShareX placeholder that contains the screenshot path
+- Test manually first before configuring ShareX
+
+To find your Node.js path, run in Command Prompt:
+  where node
+
+To find your username, run in Command Prompt:
+  echo %USERNAME%
