@@ -40,8 +40,9 @@ EXAMPLES:
 SHAREX INTEGRATION:
   Configure ShareX to run this command after capture:
   1. Open ShareX → Task settings → Actions
-  2. Add action: capture-inbox "$output" --vault-path "YOUR_VAULT_PATH"
+  2. Add action: capture-inbox "$input" --vault-path "YOUR_VAULT_PATH"
   3. Replace YOUR_VAULT_PATH with your actual Obsidian vault location
+  Note: Use $input (ShareX Actions placeholder for captured file)
 `;
 
 export async function main(argv: string[]): Promise<void> {

@@ -9,7 +9,7 @@ File path:
   C:\Program Files\nodejs\node.exe
 
 Arguments:
-  "C:\Users\YOURNAME\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\Users\YOURNAME\Documents\MyVault"
+  "C:\Users\YOURNAME\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\YOURNAME\Documents\MyVault"
 
 Working directory:
   (leave empty)
@@ -25,8 +25,13 @@ Notes:
 - Replace path to capture-inbox with where you cloned this repository
 - Replace vault path with your actual Obsidian vault location
 - Use quotes around paths that contain spaces
-- $output is a ShareX placeholder that contains the screenshot path
+- $input is the ShareX Actions placeholder for the captured screenshot path
+- IMPORTANT: Use $input (not $output) for Actions feature
 - Test manually first before configuring ShareX
+
+Documentation:
+- ShareX Actions: https://getsharex.com/actions
+- Source code: https://github.com/ShareX/ShareX/blob/master/ShareX.HelpersLib/ExternalProgram.cs
 
 To find your Node.js path, run in Command Prompt:
   where node

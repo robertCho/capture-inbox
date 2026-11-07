@@ -87,26 +87,28 @@ node bin/capture-inbox.js fixtures/test-image.png --vault-path "/absolute/path/t
 
 ## ShareX Integration
 
-ShareX is a powerful screenshot tool for Windows. This section documents the **verified** integration steps based on ShareX's official documentation.
+ShareX is a powerful screenshot tool for Windows. This section documents the **verified** integration steps based on ShareX's official Actions documentation.
 
 ### ShareX After-Capture Action Configuration
 
-**Verified**: ShareX documentation confirms these placeholder variables and action configuration:
+**Verified**: ShareX Actions use `$input` for the captured file path (confirmed via official Actions documentation and source code):
 
 1. Open **ShareX** → **Task settings** → **Actions**
 2. Click **Add** to create a new action
 3. Set the following:
    - **Name**: `Capture to Obsidian`
    - **File path**: `C:\path\to\node.exe` (your Node.js installation path)
-   - **Arguments**: `C:\path\to\capture-inbox\bin\capture-inbox.js "$output" --vault-path "C:\path\to\your\vault"`
+   - **Arguments**: `C:\path\to\capture-inbox\bin\capture-inbox.js "$input" --vault-path "C:\path\to\your\vault"`
    - **Hidden window**: ☑ (optional, to hide console window)
 
 4. In ShareX → **After capture tasks**, check **✓ Run action**
 
-**ShareX Placeholder Variables** (from official docs):
-- `$output` - Full path to the captured/saved file
-- `%input` - Full path to the input file (for file uploads)
-- Additional placeholders documented at: https://getsharex.com/docs/custom-uploader#syntax
+**ShareX Actions Placeholder Variables**:
+- `$input` - Full path to the captured file (use this for after-capture actions)
+- `$output` - Full path to output file (for actions that create new files)
+- **Source**: https://getsharex.com/actions and ShareX source code
+
+**Note**: ShareX "Actions" (`$input`/`$output`) are different from "Custom Uploader" (`%filepath`, etc.). We use Actions for after-capture automation.
 
 ### Example Configuration
 
@@ -114,7 +116,7 @@ Replace these paths with your actual system paths:
 
 ```plaintext
 File path: C:\Program Files\nodejs\node.exe
-Arguments: C:\Users\YourName\capture-inbox\bin\capture-inbox.js "$output" --vault-path "C:\Users\YourName\Documents\MyVault"
+Arguments: C:\Users\YourName\capture-inbox\bin\capture-inbox.js "$input" --vault-path "C:\Users\YourName\Documents\MyVault"
 ```
 
 ### Finding Node.js Path

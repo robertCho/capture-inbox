@@ -1,6 +1,8 @@
 # ShareX Integration Setup Guide
 
-This guide documents the integration between ShareX and capture-inbox based on ShareX's official documentation.
+This guide documents the integration between ShareX and capture-inbox based on ShareX's official Actions documentation.
+
+**Important**: ShareX "Actions" feature uses `$input`/`$output` placeholders (not to be confused with "Custom Uploader" which uses `%filepath`, `$output`, etc.). We use Actions for after-capture automation.
 
 ## Prerequisites
 
@@ -42,7 +44,7 @@ Note the full path to this repository. For example:
 |-------|-------|
 | Name | `Capture to Obsidian` |
 | File path | `C:\Program Files\nodejs\node.exe` *(adjust to your Node.js path)* |
-| Arguments | `"C:\Users\YourName\Documents\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\Users\YourName\Documents\MyVault"` |
+| Arguments | `"C:\Users\YourName\Documents\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\YourName\Documents\MyVault"` |
 | Working directory | *(leave empty or set to capture-inbox directory)* |
 | Extensions | *(leave empty for all)* |
 | Hidden window | ☑ *(optional - hides console window)* |
@@ -67,21 +69,24 @@ Note the full path to this repository. For example:
    - Obsidian opens automatically with the new card
    - The embedded image displays correctly
 
-## ShareX Placeholder Variables
+## ShareX Actions Placeholder Variables
 
-These are **verified** from ShareX official documentation:
+These are **verified** from ShareX official Actions documentation and source code:
 
-| Placeholder | Description |
-|-------------|-------------|
-| `$output` | Full path to the captured/saved file |
-| `%input` | Full path to the input file (for uploads) |
-| `%filepath` | File path (directory + filename) |
-| `%filename` | Filename without extension |
-| `%filenameext` | Filename with extension |
+| Placeholder | Description | Use Case |
+|-------------|-------------|----------|
+| `$input` | Full path to the captured file | **Use this for after-capture actions** |
+| `$output` | Full path to output file | For actions that create new/processed files |
 
-For this integration, we use `$output` to get the full path to the screenshot ShareX just saved.
+For this integration, we use `$input` to get the full path to the screenshot ShareX just captured.
 
-**Documentation**: https://getsharex.com/docs/custom-uploader#syntax
+**Official Source**:
+- Actions documentation: https://getsharex.com/actions
+- Source code: https://github.com/ShareX/ShareX/blob/master/ShareX.HelpersLib/ExternalProgram.cs
+
+**Important Distinction**: ShareX has two separate features:
+- **Actions** (after-capture): Uses `$input` and `$output` — we use this
+- **Custom Uploader**: Uses `%filepath`, `%filename`, etc. — different feature
 
 ## Example Configuration
 
@@ -89,21 +94,21 @@ For this integration, we use `$output` to get the full path to the screenshot Sh
 
 ```plaintext
 File path: C:\Program Files\nodejs\node.exe
-Arguments: "C:\Users\Alice\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\Users\Alice\Documents\MyVault"
+Arguments: "C:\Users\Alice\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\Alice\Documents\MyVault"
 ```
 
 ### Example 2: Custom Inbox Subdirectory
 
 ```plaintext
 File path: C:\Program Files\nodejs\node.exe
-Arguments: "C:\Users\Alice\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\Users\Alice\Documents\MyVault" --inbox-subdir "daily\screenshots"
+Arguments: "C:\Users\Alice\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\Alice\Documents\MyVault" --inbox-subdir "daily\screenshots"
 ```
 
 ### Example 3: Path with Spaces (requires quotes)
 
 ```plaintext
 File path: C:\Program Files\nodejs\node.exe
-Arguments: "C:\Users\Alice\My Projects\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\Users\Alice\My Documents\My Vault"
+Arguments: "C:\Users\Alice\My Projects\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\Alice\My Documents\My Vault"
 ```
 
 ## Troubleshooting
@@ -114,6 +119,7 @@ Arguments: "C:\Users\Alice\My Projects\capture-inbox\bin\capture-inbox.js" "$out
 - ShareX → After capture tasks → "Run action" is checked
 - Node.js path is correct (`where node` in CMD)
 - capture-inbox path is correct
+- Using `$input` not `$output` in Arguments field
 - All paths in Arguments are wrapped in quotes if they contain spaces
 
 **Test manually:**
@@ -160,6 +166,7 @@ This is normal behavior. To see error messages:
 - You have write permissions to vault directory
 - Inbox directory isn't being blocked by antivirus
 - Check vault/inbox folder directly in File Explorer
+- Confirm you're using `$input` placeholder (not `$output` or custom uploader variables)
 
 ## Advanced Configuration
 
@@ -169,11 +176,11 @@ ShareX allows multiple actions. You can create separate profiles:
 
 1. **Work Vault**: 
    - Action name: `Capture to Work Vault`
-   - Arguments: `... --vault-path "C:\Work\Vault"`
+   - Arguments: `"...\capture-inbox.js" "$input" --vault-path "C:\Work\Vault"`
 
 2. **Personal Vault**:
    - Action name: `Capture to Personal Vault`
-   - Arguments: `... --vault-path "C:\Personal\Vault"`
+   - Arguments: `"...\capture-inbox.js" "$input" --vault-path "C:\Personal\Vault"`
 
 Enable/disable in ShareX → After capture tasks as needed.
 
@@ -204,7 +211,7 @@ In ShareX → Hotkey settings:
 For testing or if you don't want Obsidian to open automatically:
 
 ```plaintext
-Arguments: "C:\path\to\capture-inbox\bin\capture-inbox.js" "$output" --vault-path "C:\path\to\vault" --skip-open
+Arguments: "C:\path\to\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\path\to\vault" --skip-open
 ```
 
 Then manually open the cards in Obsidian later.
@@ -212,9 +219,10 @@ Then manually open the cards in Obsidian later.
 ## Official ShareX Documentation
 
 For more advanced ShareX features:
+- **Actions documentation**: https://getsharex.com/actions (what we use)
+- Actions source code: https://github.com/ShareX/ShareX/blob/master/ShareX.HelpersLib/ExternalProgram.cs
 - Official docs: https://getsharex.com/docs/
-- After-capture actions: https://getsharex.com/docs/actions
-- Custom uploaders: https://getsharex.com/docs/custom-uploader
+- Custom uploaders (different feature): https://getsharex.com/docs/custom-uploader
 
 ## Windows Testing Checklist
 
