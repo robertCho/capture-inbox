@@ -94,9 +94,16 @@ describe('Utils', () => {
     const filePath = 'C:\\Users\\User\\MyVault\\inbox\\note.md';
     const uri = encodeObsidianUri(vaultPath, filePath);
     
-    assert.match(uri, /^obsidian:\/\/open\?vault=/);
-    assert.ok(uri.includes('inbox'));
-    assert.ok(uri.includes('note.md'));
+    // Verify exact structure for cross-platform correctness
+    assert.strictEqual(uri, 'obsidian://open?vault=MyVault&file=inbox%2Fnote.md');
+  });
+
+  test('encodeObsidianUri - handles Windows paths with nested subdirectories', async () => {
+    const vaultPath = 'C:\\Users\\User\\MyVault';
+    const filePath = 'C:\\Users\\User\\MyVault\\daily\\2026\\11\\note.md';
+    const uri = encodeObsidianUri(vaultPath, filePath);
+    
+    assert.strictEqual(uri, 'obsidian://open?vault=MyVault&file=daily%2F2026%2F11%2Fnote.md');
   });
 
   test('encodeObsidianUri - handles Chinese characters', async () => {
@@ -113,8 +120,15 @@ describe('Utils', () => {
     const filePath = '/home/user/My Vault/inbox/my note.md';
     const uri = encodeObsidianUri(vaultPath, filePath);
     
-    assert.ok(uri.includes('vault=My%20Vault'));
-    assert.ok(uri.includes('inbox%2Fmy%20note.md'));
+    assert.strictEqual(uri, 'obsidian://open?vault=My%20Vault&file=inbox%2Fmy%20note.md');
+  });
+
+  test('encodeObsidianUri - handles Windows paths with spaces', async () => {
+    const vaultPath = 'C:\\Users\\My User\\My Vault';
+    const filePath = 'C:\\Users\\My User\\My Vault\\inbox\\my note.md';
+    const uri = encodeObsidianUri(vaultPath, filePath);
+    
+    assert.strictEqual(uri, 'obsidian://open?vault=My%20Vault&file=inbox%2Fmy%20note.md');
   });
 
   test('validateAbsolutePath - accepts absolute paths', async () => {

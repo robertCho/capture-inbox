@@ -57,12 +57,33 @@ export async function generateUniqueFilename(
 
 /**
  * Encodes a file path for use in an Obsidian URI
+ * Handles both Windows and POSIX paths for cross-platform testing
  */
 export function encodeObsidianUri(vaultPath: string, filePath: string): string {
-  const vaultName = vaultPath.split(sep).pop() || 'vault';
-  const relativePath = relative(vaultPath, filePath);
-  const normalizedPath = relativePath.split(sep).join('/');
-  const encodedPath = encodeURIComponent(normalizedPath);
+  // Normalize both paths to forward slashes for consistent processing
+  const normalizedVaultPath = vaultPath.replace(/\\/g, '/');
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  
+  // Extract vault name (last path component)
+  const vaultName = normalizedVaultPath.split('/').filter(Boolean).pop() || 'vault';
+  
+  // Compute relative path by removing vault path prefix
+  // This works cross-platform without relying on path.relative()
+  let relativePath: string;
+  if (normalizedFilePath.startsWith(normalizedVaultPath + '/')) {
+    relativePath = normalizedFilePath.substring(normalizedVaultPath.length + 1);
+  } else if (normalizedFilePath.startsWith(normalizedVaultPath)) {
+    // Handle case where vault path already has trailing slash
+    relativePath = normalizedFilePath.substring(normalizedVaultPath.length);
+    if (relativePath.startsWith('/')) {
+      relativePath = relativePath.substring(1);
+    }
+  } else {
+    // Fallback to platform-specific relative() for edge cases
+    relativePath = relative(vaultPath, filePath).replace(/\\/g, '/');
+  }
+  
+  const encodedPath = encodeURIComponent(relativePath);
   const encodedVault = encodeURIComponent(vaultName);
   
   return `obsidian://open?vault=${encodedVault}&file=${encodedPath}`;
