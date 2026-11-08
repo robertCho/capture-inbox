@@ -72,6 +72,7 @@ export async function readState(vaultPath: string, inboxSubdir: string): Promise
 
 /**
  * Write the current target state to the state file
+ * Uses unique temp filename to prevent concurrent write races
  */
 export async function writeState(
   vaultPath: string,
@@ -84,13 +85,27 @@ export async function writeState(
   // Ensure state directory exists
   await mkdir(stateDir, { recursive: true });
   
-  // Write state file atomically by writing to temp file first
-  const tempFilePath = `${stateFilePath}.tmp`;
-  await writeFile(tempFilePath, JSON.stringify(state, null, 2), 'utf-8');
+  // Write state file atomically with unique temp filename per operation
+  // This prevents race where multiple processes overwrite same .tmp file
+  const uniqueSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const tempFilePath = `${stateFilePath}.tmp.${uniqueSuffix}`;
   
-  // Rename is atomic on most systems
-  const { rename } = await import('node:fs/promises');
-  await rename(tempFilePath, stateFilePath);
+  try {
+    await writeFile(tempFilePath, JSON.stringify(state, null, 2), 'utf-8');
+    
+    // Rename is atomic on most systems
+    const { rename } = await import('node:fs/promises');
+    await rename(tempFilePath, stateFilePath);
+  } catch (error) {
+    // Clean up temp file on error
+    try {
+      const { unlink } = await import('node:fs/promises');
+      await unlink(tempFilePath);
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
 }
 
 /**

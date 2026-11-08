@@ -32,7 +32,22 @@ function getLockFilePath(vaultPath: string, inboxSubdir: string): string {
 }
 
 /**
- * Check if a lock is stale (older than LOCK_TIMEOUT_MS)
+ * Check if a process is still running
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    // Sending signal 0 doesn't kill the process, just checks if it exists
+    process.kill(pid, 0);
+    return true;
+  } catch (error: any) {
+    // ESRCH means process doesn't exist
+    // EPERM means process exists but we don't have permission (still alive)
+    return error.code === 'EPERM';
+  }
+}
+
+/**
+ * Check if a lock is stale (older than LOCK_TIMEOUT_MS AND process not alive)
  */
 async function isLockStale(lockPath: string): Promise<boolean> {
   try {
@@ -40,7 +55,15 @@ async function isLockStale(lockPath: string): Promise<boolean> {
     const content = await readFile(lockPath, 'utf-8');
     const lockInfo: LockInfo = JSON.parse(content);
     const age = Date.now() - lockInfo.timestamp;
-    return age > LOCK_TIMEOUT_MS;
+    
+    // Lock is only stale if:
+    // 1. It's older than timeout AND
+    // 2. The owning process is no longer alive
+    if (age > LOCK_TIMEOUT_MS) {
+      return !isProcessAlive(lockInfo.pid);
+    }
+    
+    return false;
   } catch {
     // If we can't read or parse, consider it stale
     return true;
