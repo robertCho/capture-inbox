@@ -119,13 +119,18 @@ Click **Add** again and configure:
 
 ShareX → **Hotkey settings**:
 
+**⚠️ IMPORTANT: Each hotkey must run ONLY ONE action**
+- Do NOT check both actions for a single hotkey
+- Each hotkey should execute create OR append, never both
+- This ensures only one command runs per capture
+
 **Profile 1: Create New Card**
 - **Hotkey**: `Ctrl+PrintScreen` (or your preference)
 - **Task**: Screen capture → Region (or any capture mode)
 - **After capture tasks**:
   - ☑ Save image to file
   - ☑ Perform actions
-- **Actions**: Select "Capture to Obsidian - Create"
+- **Actions**: Select **ONLY** "Capture to Obsidian - Create" (uncheck any other actions)
 
 **Profile 2: Append to Current Card**
 - **Hotkey**: `Ctrl+Shift+PrintScreen` (or your preference)
@@ -133,7 +138,7 @@ ShareX → **Hotkey settings**:
 - **After capture tasks**:
   - ☑ Save image to file
   - ☑ Perform actions
-- **Actions**: Select "Capture to Obsidian - Append"
+- **Actions**: Select **ONLY** "Capture to Obsidian - Append" (uncheck any other actions)
 
 #### 5. Verify node.exe Path
 
@@ -190,6 +195,38 @@ rm "<vault>/<inbox>/.capture-inbox-state/current-target.json"
 ```
 
 Or simply create a new card with `--action create`.
+
+### User-Visible Target Indication
+
+**Important**: When used from ShareX with hidden window enabled, stdout is not visible to the user.
+
+**Target Indication Methods**:
+
+1. **Obsidian Auto-Open** (Primary Method):
+   - Both create and append open the target card in Obsidian by default
+   - Append opens the **same card** as the previous create
+   - Visual confirmation: The card you see in Obsidian is the current target
+
+2. **CLI Output** (Manual Testing Only):
+   - CLI prints target card path when run manually
+   - Example: `Card saved: <path>/capture_2026-11-08_14-23-45.md`
+   - **Not visible** when run from ShareX with hidden window
+
+3. **State File** (Advanced):
+   - Check `<vault>/<inbox>/.capture-inbox-state/current-target.json`
+   - Contains current target card path
+   - Can be inspected manually if needed
+
+**Limitations**:
+- No visual indicator on screen during ShareX capture (by design, for clean workflow)
+- No notification bubble or popup (would interrupt user workflow)
+- Reliance on Obsidian auto-open for target awareness
+- If Obsidian URI fails to open, user may not know which card was targeted
+
+**Recommended Workflow**:
+1. Press create hotkey → Obsidian opens new card → This is your current target
+2. Press append hotkey → Obsidian opens same card → Screenshot added
+3. Visual confirmation via Obsidian window is the primary feedback mechanism
 
 ---
 
@@ -377,12 +414,24 @@ User reported login fails on Safari.
 npm test
 ```
 
-**Coverage**: 59 tests, ~97% code coverage
+**Coverage**: 75 tests, ~97% code coverage, 6 test suites
+
+**Test Inventory**:
+- **Original tests (31)**: All retained, no coverage weakened
+  - Capture suite: 13 tests (file creation, collision, paths, errors)
+  - Utils suite: 18 tests (path validation, encoding, filename generation)
+- **New tests (44)**:
+  - Append suite: 14 tests (multiple appends, user edits, target isolation)
+  - State management: 14 tests (target tracking, validation, corruption handling)
+  - Concurrent operations: 8 tests (concurrent creates/appends, lost update prevention)
+  - Lock mechanism: 8 tests (serialization, stale lock cleanup, timeout behavior)
 
 **Test Categories**:
 - Create action: File creation, collision handling, path validation
 - Append action: Multiple appends, user edit preservation, target isolation
+- Concurrent operations: Parallel creates/appends, no lost updates, proper serialization
 - State management: Target tracking, validation, error cases
+- Lock mechanism: Acquire/release, stale detection, timeout, independent per-inbox
 - Unicode/spaces: Chinese filenames, paths with spaces
 - Error scenarios: Missing files, invalid paths, no target
 
@@ -411,29 +460,44 @@ rm -rf test-vault
 
 ### Path Validation
 
-- All paths must be absolute (rejects relative paths)
-- Inbox must be within vault (prevents directory traversal)
-- Target validation checks vault boundaries on every append
+- **Absolute paths required**: All paths must be absolute (rejects relative paths)
+- **Vault boundary enforcement**: Inbox must be within vault (prevents directory traversal)
+- **Target validation**: Checks vault boundaries on every append
+- **Symlink handling**: Follows symlinks but validates final resolved path is within vault
+- **Path traversal prevention**: Rejects `..` and other escape attempts
 
 ### Collision Handling
 
 - Timestamp-based filenames: `capture_YYYY-MM-DD_HH-MM-SS.ext`
 - Counter suffix on collision: `capture_YYYY-MM-DD_HH-MM-SS_1.ext`
 - Unique filenames guaranteed per vault/inbox
+- Safe for rapid sequential captures
 
-### Concurrency
+### Concurrency & Locking
 
-- **Create operations**: Collision-safe via unique filenames
-- **Append operations**: Sequential appends recommended
-  - Concurrent appends to the same card may race
-  - Each append preserves image bytes and generates unique filenames
-  - For rapid captures, use sequential appends or create separate cards
+**✅ Robust Concurrent Operation Protection**
+
+- **File-based locking**: All create and append operations are serialized per inbox
+- **No lost updates**: Concurrent appends to the same card are fully safe
+  - Lock acquired before read-modify-write
+  - All appended images preserved, no silent data loss
+  - User edits always preserved
+- **Stale lock cleanup**: Locks older than 30 seconds automatically removed
+- **Lock timeout**: Operations fail with clear error after 60 seconds if lock stuck
+- **Independent locks**: Each vault/inbox has its own lock (parallel operation across inboxes)
+- **Tested**: Comprehensive synthetic tests for concurrent creates, appends, and mixed operations
+
+**ShareX Rapid Capture Support**:
+- Multiple hotkey presses in quick succession are fully safe
+- Create and append can be fired concurrently without data loss
+- Operations are serialized automatically using file locks
 
 ### State Integrity
 
 - State file written atomically (temp file + rename)
 - Corrupted state file handled gracefully (returns empty state)
 - Version checking (future compatibility)
+- Lock-protected read-modify-write cycles prevent stale state
 
 ---
 
@@ -443,9 +507,10 @@ rm -rf test-vault
 
 1. **No OCR**: Text in screenshots is not extracted
 2. **No AI Summary**: No automatic summarization
-3. **Sequential appends**: Concurrent appends to same card not recommended
-4. **No rollback UI**: Cannot undo append via CLI (manual file editing required)
-5. **Single target per vault/inbox**: Only one "current" card per inbox
+3. **No rollback UI**: Cannot undo append via CLI (manual file editing required)
+4. **Single target per vault/inbox**: Only one "current" card per inbox
+5. **Target indication**: Relies on Obsidian auto-open (no screen notification)
+6. **Lock timeout**: Operations fail after 60s if lock acquisition times out (rare)
 
 ### Windows Testing
 

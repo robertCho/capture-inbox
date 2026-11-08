@@ -16,11 +16,13 @@ import {
   setCurrentTarget,
   validateTargetForAppend,
 } from './state.js';
+import { withLock } from './lock.js';
 
 const execAsync = promisify(exec);
 
 /**
  * Main capture function: copies screenshot and creates Obsidian card
+ * All operations are serialized per inbox using file-based locking
  */
 export async function captureScreenshot(
   screenshotPath: string,
@@ -44,11 +46,14 @@ export async function captureScreenshot(
 
   const action = config.action || 'create';
 
-  if (action === 'append') {
-    return await appendToCard(screenshotPath, config, inboxPath);
-  } else {
-    return await createNewCard(screenshotPath, config, inboxPath);
-  }
+  // Serialize all operations per inbox to prevent lost updates
+  return await withLock(config.vaultPath, config.inboxSubdir, action, async () => {
+    if (action === 'append') {
+      return await appendToCard(screenshotPath, config, inboxPath);
+    } else {
+      return await createNewCard(screenshotPath, config, inboxPath);
+    }
+  });
 }
 
 /**
