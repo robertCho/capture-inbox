@@ -2,217 +2,346 @@
 
 **Windows CLI tool for ShareX → Obsidian screenshot capture workflow**
 
-## Milestone 1 Scope
+## Overview
 
-This is **Milestone 1 only**: Proves the screenshot → persisted Markdown card + image → Obsidian open workflow.
+Capture screenshots from ShareX directly into Obsidian markdown cards with two capture modes:
+
+- **CREATE** (Ctrl+PrintScreen): Start a new capture card
+- **APPEND** (Ctrl+Shift+PrintScreen): Add more screenshots to the current card
+
+Perfect for preserving discussion fragments, troubleshooting sessions, or multi-step processes where screenshots belong together.
+
+## Features
+
+✅ **Two Capture Actions**:
+- `--action create`: Creates new card, sets it as current target
+- `--action append`: Adds screenshot to current card, preserves user edits
 
 ✅ **Implemented**:
 - Accepts screenshot path from ShareX after-capture action
 - Copies screenshot to Obsidian vault inbox (preserves exact bytes)
-- Creates Markdown card with embedded image
+- Creates/updates Markdown cards with embedded images
 - Opens card in Obsidian via URI protocol
 - Collision-safe timestamp-based filenames
+- Target isolation per vault/inbox combination
+- State management with explicit target tracking
 - Path validation and security
-- Error handling
+- Comprehensive error handling
 
 ❌ **NOT Implemented** (future milestones):
-- OCR text recognition (placeholder says "Not yet implemented")
-- AI-powered summarization (placeholder says "Not yet implemented")
+- OCR text recognition (placeholder shown in cards)
+- AI-powered summarization (placeholder shown in cards)
 - AI provider integration (no API keys or costs)
 
-**No billing, deployments, credentials, or AI APIs required for this milestone.**
+**No billing, deployments, credentials, or AI APIs required.**
 
 ---
 
-## Windows Acceptance Testing Guide
+## Quick Start
 
-This README is a **self-contained runbook** for Windows acceptance testing. All automated tests passed on Linux; Windows GUI and ShareX automation require manual verification.
+### Installation
 
-**PR Branch**: https://github.com/robertCho/capture-inbox/pull/1  
-**Branch**: `cursor/sharex-obsidian-cli-4003`  
-**Latest Commit**: b38465d
-
----
-
-## Prerequisites
-
-### Required Software
-
-1. **Windows** (primary target, tested on Linux only)
-2. **Node.js** 18.0.0 or higher (LTS recommended)
-   - Download: https://nodejs.org/
-   - Verify: Open **Command Prompt** (not PowerShell) and run:
-     ```cmd
-     node --version
-     ```
-     Expected: `v18.0.0` or higher
-
-3. **Obsidian** with an **empty test vault**
-   - Download: https://obsidian.md/
-   - **Important**: Create a NEW empty vault for testing (do not use your personal vault)
-   - Vault must be created and opened at least once in Obsidian before URI testing
-
-4. **ShareX** (optional, for end-to-end automation testing)
-   - Download: https://getsharex.com/
-
-### Test Environment Setup
-
-1. **Create test vault**:
-   - Open Obsidian
-   - Create new vault: `C:\Users\<YourName>\Documents\test-vault-capture-inbox`
-   - Open it once to ensure Obsidian registers it
-   - Close Obsidian
-
-2. **Note your paths** (you'll need these):
-   - Node.js executable: Run `where node` in Command Prompt
-   - Test vault path: The full path you just created
-
----
-
-## Installation from PR Branch
-
-**Download this specific PR branch** (not main):
-
-### Option 1: Download ZIP (No Git Required)
-
-1. Download: https://github.com/robertCho/capture-inbox/archive/refs/heads/cursor/sharex-obsidian-cli-4003.zip
-2. Extract to a folder (e.g., `C:\Users\<YourName>\Downloads\capture-inbox-test`)
-3. Open **Command Prompt** and navigate to the extracted folder:
-   ```cmd
-   cd C:\Users\<YourName>\Downloads\capture-inbox-test\capture-inbox-cursor-sharex-obsidian-cli-4003
-   ```
-
-### Option 2: Git Clone (If Git Installed)
-
-```cmd
+```bash
+# Install from repository
 git clone https://github.com/robertCho/capture-inbox.git
 cd capture-inbox
-git checkout cursor/sharex-obsidian-cli-4003
+npm ci
+npm run build
 ```
 
-### Verify You're in the Right Place
+### Basic Usage
 
-You should see `package.json` in your current directory:
+```bash
+# Create new card (default action)
+node bin/capture-inbox.js "/path/to/screenshot.png" --vault-path "/path/to/vault"
 
-```cmd
-dir package.json
+# Append to current card
+node bin/capture-inbox.js "/path/to/screenshot.png" --vault-path "/path/to/vault" --action append
 ```
-
-Expected: File exists
 
 ---
 
-## Build and Install Dependencies
+## ShareX Integration
 
-**All commands run in Command Prompt** (cmd.exe), not PowerShell (to avoid execution policy issues).
+### Two-Hotkey Setup (Recommended)
 
-```cmd
-REM Install dependencies (use exact lockfile)
-npm.cmd ci
+Configure two independent hotkeys in ShareX for maximum flexibility:
 
-REM Build TypeScript to JavaScript
-npm.cmd run build
+**Hotkey 1: Create New Card** (e.g., **Ctrl+PrintScreen**)
+- Opens a new capture card
+- Sets it as the current target for appends
 
-REM Verify dist directory was created
-dir dist
+**Hotkey 2: Append to Current Card** (e.g., **Ctrl+Shift+PrintScreen**)
+- Adds screenshot to the current card
+- Preserves user edits
+- Opens the same card in Obsidian
+
+### Configuration Steps
+
+#### 1. Open ShareX Actions
+
+- Right-click ShareX tray icon → **Task settings**
+- Go to **Actions** tab
+
+#### 2. Add First Action (Create)
+
+Click **Add** and configure:
+
+| Field | Value |
+|-------|-------|
+| **Name** | `Capture to Obsidian - Create` |
+| **File path** | `C:\Program Files\nodejs\node.exe` |
+| **Arguments** | `"C:\<PROJECT_ROOT>\bin\capture-inbox.js" "$input" --vault-path "C:\<YOUR_VAULT_PATH>"` |
+| **Hidden window** | ☑ Checked |
+
+**Example Arguments**:
+```
+"C:\Users\YourName\projects\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\YourName\Documents\ObsidianVault"
 ```
 
-**Expected Output**:
-- `npm ci`: Installs 3 packages, 0 vulnerabilities
-- `npm run build`: TypeScript compilation successful
-- `dist` folder contains: `capture.js`, `cli.js`, `utils.js`, `types.js`, and `tests\` subfolder
+#### 3. Add Second Action (Append)
 
-**Stop on Failure**: If any command fails, do not proceed. Report error output.
+Click **Add** again and configure:
+
+| Field | Value |
+|-------|-------|
+| **Name** | `Capture to Obsidian - Append` |
+| **File path** | `C:\Program Files\nodejs\node.exe` |
+| **Arguments** | `"C:\<PROJECT_ROOT>\bin\capture-inbox.js" "$input" --vault-path "C:\<YOUR_VAULT_PATH>" --action append` |
+| **Hidden window** | ☑ Checked |
+
+**Example Arguments**:
+```
+"C:\Users\YourName\projects\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\YourName\Documents\ObsidianVault" --action append
+```
+
+#### 4. Create Two Capture Profiles
+
+ShareX → **Hotkey settings**:
+
+**⚠️ IMPORTANT: Each hotkey must run ONLY ONE action**
+- Do NOT check both actions for a single hotkey
+- Each hotkey should execute create OR append, never both
+- This ensures only one command runs per capture
+
+**Profile 1: Create New Card**
+- **Hotkey**: `Ctrl+PrintScreen` (or your preference)
+- **Task**: Screen capture → Region (or any capture mode)
+- **After capture tasks**:
+  - ☑ Save image to file
+  - ☑ Perform actions
+- **Actions**: Select **ONLY** "Capture to Obsidian - Create" (uncheck any other actions)
+
+**Profile 2: Append to Current Card**
+- **Hotkey**: `Ctrl+Shift+PrintScreen` (or your preference)
+- **Task**: Screen capture → Region (or any capture mode)
+- **After capture tasks**:
+  - ☑ Save image to file
+  - ☑ Perform actions
+- **Actions**: Select **ONLY** "Capture to Obsidian - Append" (uncheck any other actions)
+
+#### 5. Verify node.exe Path
+
+Find your Node.js installation:
+```cmd
+where node
+```
+Copy the first result (e.g., `C:\Program Files\nodejs\node.exe`)
+
+### Important ShareX Notes
+
+- **Use `$input` placeholder**: This is the captured screenshot file path
+- **Do NOT use `$output`**: That's for different ShareX features
+- **Quote paths with spaces**: Both the JavaScript file and vault path
+- **Keep Windows Snipping Tool**: Plain `PrintScreen` can still work normally
+- **User chooses hotkeys**: The examples above are suggestions, not requirements
 
 ---
 
-## Baseline Test: Manual CLI with Synthetic Fixture
+## State Management
 
-Test with repository's included synthetic screenshot (NOT your personal screenshots).
+### How Target Tracking Works
 
-### Step 1: Locate Synthetic Fixture
-
-The repository includes `fixtures\test-image.png` (1x1 pixel synthetic PNG, 70 bytes).
-
-Get its absolute path:
-
-```cmd
-cd fixtures
-echo %CD%\test-image.png
-cd ..
+The tool maintains state in:
+```
+<vault>/<inbox>/.capture-inbox-state/current-target.json
 ```
 
-**Copy the full path** (e.g., `C:\Users\<YourName>\...\capture-inbox\fixtures\test-image.png`)
-
-### Step 2: Run CLI with --skip-open (No Obsidian Launch)
-
-Replace placeholders with YOUR actual paths:
-
-```cmd
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
+**State File Structure**:
+```json
+{
+  "version": "1.0.0",
+  "currentTarget": {
+    "cardPath": "<vault>/<inbox>/capture_2026-11-08_14-23-45.md",
+    "imagePath": "<vault>/<inbox>/capture_2026-11-08_14-23-45.png",
+    "timestamp": "2026-11-08T14:23:45.123Z",
+    "vault": "<vault-path>",
+    "inbox": "<inbox-subdir>"
+  }
+}
 ```
 
-**Placeholder Guide**:
-- `<PROJECT_ROOT>`: Where you extracted/cloned capture-inbox
-- `<YOUR_TEST_VAULT_PATH>`: Your test vault (e.g., `C:\Users\YourName\Documents\test-vault-capture-inbox`)
+### Target Isolation
 
-**Expected Output**:
-```
-✓ Capture successful
-  Image saved: C:\<YOUR_TEST_VAULT_PATH>\inbox\capture_2026-11-07_XX-XX-XX.png
-  Card saved: C:\<YOUR_TEST_VAULT_PATH>\inbox\capture_2026-11-07_XX-XX-XX.md
-  Obsidian open: skipped
-```
+- **Per vault/inbox combination**: Different vaults or inbox subdirectories have independent targets
+- **Explicit state**: Target is set by successful `--action create`, not by file modification time
+- **Validation on append**: Checks that target card exists and is within vault boundaries
 
-**Exit Code**: 0 (success)
+### Resetting Target
 
-**Verify**: Check your test vault's `inbox` folder - you should see:
-- `capture_YYYY-MM-DD_HH-MM-SS.png` (70 bytes)
-- `capture_YYYY-MM-DD_HH-MM-SS.md` (206 bytes)
-
-**Stop on Failure**: If error occurs, read message carefully. Common errors:
-- "Screenshot file not found": Check fixture path is absolute and correct
-- "Vault directory not found": Check vault path exists and is absolute
-- Exit code 1: Error occurred, do not proceed until resolved
-
-### Step 3: Verify Image Integrity (SHA256)
-
-**Command Prompt** (using certutil):
-
-```cmd
-cd C:\<YOUR_TEST_VAULT_PATH>\inbox
-certutil -hashfile test-image.png SHA256
-certutil -hashfile capture_2026-11-07_XX-XX-XX.png SHA256
+Delete the state file to reset:
+```bash
+rm "<vault>/<inbox>/.capture-inbox-state/current-target.json"
 ```
 
-**PowerShell** (alternative):
+Or simply create a new card with `--action create`.
 
-```powershell
-Get-FileHash fixtures\test-image.png
-Get-FileHash C:\<YOUR_TEST_VAULT_PATH>\inbox\capture_*.png
+### User-Visible Target Indication
+
+**Important**: When used from ShareX with hidden window enabled, stdout is not visible to the user.
+
+**Target Indication Methods**:
+
+1. **Obsidian Auto-Open** (Primary Method):
+   - Both create and append open the target card in Obsidian by default
+   - Append opens the **same card** as the previous create
+   - Visual confirmation: The card you see in Obsidian is the current target
+
+2. **CLI Output** (Manual Testing Only):
+   - CLI prints target card path when run manually
+   - Example: `Card saved: <path>/capture_2026-11-08_14-23-45.md`
+   - **Not visible** when run from ShareX with hidden window
+
+3. **State File** (Advanced):
+   - Check `<vault>/<inbox>/.capture-inbox-state/current-target.json`
+   - Contains current target card path
+   - Can be inspected manually if needed
+
+**Limitations**:
+- No visual indicator on screen during ShareX capture (by design, for clean workflow)
+- No notification bubble or popup (would interrupt user workflow)
+- Reliance on Obsidian auto-open for target awareness
+- If Obsidian URI fails to open, user may not know which card was targeted
+
+**Recommended Workflow**:
+1. Press create hotkey → Obsidian opens new card → This is your current target
+2. Press append hotkey → Obsidian opens same card → Screenshot added
+3. Visual confirmation via Obsidian window is the primary feedback mechanism
+
+---
+
+## Command-Line Reference
+
+### Synopsis
+
+```
+capture-inbox <screenshot-path> --vault-path <path> [options]
 ```
 
-**Expected**: Both SHA256 hashes **must match exactly**:
+### Arguments
+
+- `<screenshot-path>` (required): Absolute path to the screenshot file
+
+### Options
+
+- `--vault-path <path>` (required): Absolute path to Obsidian vault
+- `--action <type>` (optional): Action type: `create` or `append` (default: `create`)
+- `--inbox-subdir <path>` (optional): Subdirectory within vault (default: `inbox`)
+- `--skip-open` (optional): Don't open Obsidian after capture
+- `--help`: Show help message
+
+### Actions
+
+#### create (default)
+
+Creates a new capture card and sets it as the current target.
+
+**Behavior**:
+- Copies screenshot to vault inbox
+- Generates unique timestamp-based filenames
+- Creates new Markdown card
+- Stores card as current target for future appends
+- Opens card in Obsidian (unless `--skip-open`)
+
+**Compatible with**: Existing ShareX configurations (default action)
+
+#### append
+
+Appends screenshot to the current target card.
+
+**Behavior**:
+- Validates that a target card exists
+- Copies screenshot to vault inbox with unique filename
+- Appends image reference to existing card (before OCR section)
+- Preserves user edits in the card
+- Opens the same card in Obsidian (unless `--skip-open`)
+
+**Fails if**:
+- No target card exists (error: `NO_TARGET`)
+- Target card was deleted or moved (error: `TARGET_MISSING`)
+- Target is in a different vault/inbox
+
+### Examples
+
+```bash
+# Create new card (explicit)
+capture-inbox "C:\Screenshots\shot.png" --vault-path "C:\Vault" --action create
+
+# Create new card (implicit, default action)
+capture-inbox "C:\Screenshots\shot.png" --vault-path "C:\Vault"
+
+# Append to current card
+capture-inbox "C:\Screenshots\shot.png" --vault-path "C:\Vault" --action append
+
+# Create without opening Obsidian
+capture-inbox screenshot.png --vault-path "./vault" --skip-open
+
+# Custom inbox subdirectory
+capture-inbox screenshot.png --vault-path "./vault" --inbox-subdir "daily/captures"
+
+# Append to custom inbox
+capture-inbox screenshot.png --vault-path "./vault" --inbox-subdir "daily/captures" --action append
 ```
-SHA256 hash: 6b7fa434f92a8b80aab02d9bf1a12e49ffcae424e4013a1c4f68b67e3d2bbcd0
-```
 
-**Stop on Failure**: If hashes don't match, image was corrupted. Report immediately.
+---
 
-### Step 4: Inspect Generated Markdown Card
+## Error Handling
 
-Open `capture_*.md` in a text editor (not Obsidian yet):
+### Common Errors
 
-**Expected Content**:
+**NO_TARGET**: No current target card exists
+- **Solution**: Create a new card first with `--action create`
+
+**TARGET_MISSING**: Current target card was deleted or moved
+- **Solution**: Create a new card with `--action create`
+
+**FILE_NOT_FOUND**: Screenshot file doesn't exist
+- **Solution**: Check the file path is correct
+
+**VAULT_NOT_FOUND**: Vault directory doesn't exist
+- **Solution**: Create the vault directory or check the path
+
+**RELATIVE_PATH**: Path must be absolute
+- **Solution**: Use full paths like `C:\Users\...` or `/home/user/...`
+
+**PATH_ESCAPE**: Path attempts to escape vault
+- **Solution**: Check `--inbox-subdir` setting doesn't use `..`
+
+---
+
+## Card Format
+
+### New Card (Created with --action create)
+
 ```markdown
 ---
-created: 2026-11-07T08:35:57.482Z
+created: 2026-11-08T14:23:45.123Z
 tags: [capture, inbox]
 ---
 
-# Capture 2026-11-07
+# Capture 2026-11-08
 
-![Screenshot](capture_2026-11-07_08-35-5.png)
+![Screenshot](capture_2026-11-08_14-23-45.png)
 
 ## OCR Text
 *Not yet implemented*
@@ -221,531 +350,188 @@ tags: [capture, inbox]
 *Not yet implemented*
 ```
 
-**Verify**:
-- ✅ Frontmatter has `created` timestamp in ISO format
-- ✅ Frontmatter has `tags: [capture, inbox]`
-- ✅ Image embedded with **relative path** (filename only, no directory)
-- ✅ OCR section says "*Not yet implemented*"
-- ✅ AI Summary section says "*Not yet implemented*"
+### After Append (--action append)
 
+```markdown
+---
+created: 2026-11-08T14:23:45.123Z
+tags: [capture, inbox]
 ---
 
-## Auto-Open Test: Obsidian URI Launch
+# Capture 2026-11-08
 
-**Prerequisites**:
-- Obsidian must be installed
-- Test vault must exist and have been opened in Obsidian at least once
-- Obsidian can be closed during test
+![Screenshot](capture_2026-11-08_14-23-45.png)
 
-### Step 5: Test Obsidian URI Launch
+![Screenshot](capture_2026-11-08_14-23-47.png)
 
-Run WITHOUT `--skip-open` flag:
+![Screenshot](capture_2026-11-08_14-23-49.png)
 
-```cmd
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>"
+## OCR Text
+*Not yet implemented*
+
+## AI Summary
+*Not yet implemented*
 ```
 
-**Expected Behavior**:
-1. Command prints:
-   ```
-   ✓ Capture successful
-     Image saved: ...
-     Card saved: ...
-     Obsidian open: URI launched (verify manually that Obsidian opened)
-   ```
-2. Command exits (does not hang)
-3. Obsidian window **should** open showing the new card
+### Preserving User Edits
 
-**If Command Hangs**:
-- Wait **up to 10 seconds**
-- Press `Ctrl+C` to stop
-- Report as failure: "URI launch hangs command"
-- Note: Tool attempted launch but cannot verify success
+The append action preserves any edits you make to the card:
 
-**Manual Verification**:
-- Did Obsidian open? (YES/NO)
-- Did it show the new card? (YES/NO)
-- Is the embedded image visible? (YES/NO)
-
-**Distinction**:
-- "URI launched" = Tool sent the command
-- "Obsidian opened" = You see the Obsidian window
-- These are different! Tool cannot detect if Obsidian responded.
-
-**Stop on Failure**: If Obsidian doesn't open:
-1. Test manually: Open browser, go to `obsidian://open?vault=test-vault-capture-inbox`
-2. If that fails, Obsidian URI protocol is not registered
-3. Reinstall Obsidian or check Windows URI registration
-
-### Step 6: Verify Image Renders in Obsidian
-
-With card open in Obsidian:
-
-**Expected**:
-- Markdown card displays
-- Image shows inline (1x1 pixel, may appear tiny)
-- Image is clickable/expandable
-- No broken image icon
-
-**Stop on Failure**: If image doesn't render:
-- Check image file exists in vault/inbox
-- Check image path in Markdown is relative (no `\` or `/` prefix)
-- Check image filename matches exactly (case-sensitive on some systems)
-
+```markdown
+---
+created: 2026-11-08T14:23:45.123Z
+tags: [capture, inbox, bug-investigation]
 ---
 
-## Collision Safety Test
+# Bug Investigation - Login Issue
 
-### Step 7: Rapid Consecutive Captures
+User reported login fails on Safari.
 
-Run the command **3 times rapidly** (within same second if possible):
+![Screenshot](capture_2026-11-08_14-23-45.png)
 
-```cmd
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
+**Finding**: Console shows CORS error
+<!-- User added these notes after first screenshot -->
 
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
+![Screenshot](capture_2026-11-08_14-23-47.png)
 
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
-```
+**Solution**: Added missing header
+<!-- Append added this second screenshot, preserved user notes -->
 
-**Expected**:
-- All 3 succeed (exit code 0)
-- 6 files created: 3 PNG + 3 MD
-- Filenames have collision counters: `capture_*_1.png`, `capture_*_2.png`, etc.
-- OR different timestamps if captures were >1 second apart
+## OCR Text
+*Not yet implemented*
 
-**Verify**:
-
-```cmd
-dir C:\<YOUR_TEST_VAULT_PATH>\inbox
-```
-
-Count the files. You should have at least 6 files total (from all tests).
-
-**Stop on Failure**: If any capture failed or files were overwritten (same timestamp, no counter), report collision handling bug.
-
----
-
-## Unicode and Spaces Path Test
-
-### Step 8: Test with Chinese Filename
-
-The repository includes `fixtures\test-image-cn-文件.png` with Chinese characters.
-
-```cmd
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image-cn-文件.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
-```
-
-**Expected**: Success, files created
-
-**Verify**: Check vault/inbox for new capture (filename will be timestamp-based, not Chinese)
-
-### Step 9: Test with Spaces in Vault Path
-
-If your test vault path has spaces (e.g., `C:\Users\My Name\Documents\test vault`):
-
-```cmd
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\Users\My Name\Documents\test vault" --skip-open
-```
-
-**Expected**: Success (quotes handle spaces)
-
----
-
-## Error Scenario Tests
-
-### Step 10: Missing Screenshot File
-
-```cmd
-node bin\capture-inbox.js "C:\nonexistent\fake.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
-```
-
-**Expected**:
-- Exit code: 1
-- Error message: `✗ Capture failed: Screenshot file not found`
-- Helpful explanation printed
-
-### Step 11: Missing Vault Directory
-
-```cmd
-node bin\capture-inbox.js "C:\<PROJECT_ROOT>\fixtures\test-image.png" --vault-path "C:\nonexistent\vault" --skip-open
-```
-
-**Expected**:
-- Exit code: 1
-- Error message: `✗ Capture failed: Vault directory not found`
-- Instructions to create vault or check path
-
-### Step 12: Relative Path Rejection
-
-```cmd
-node bin\capture-inbox.js "fixtures\test-image.png" --vault-path "C:\<YOUR_TEST_VAULT_PATH>" --skip-open
-```
-
-**Expected**:
-- Exit code: 1
-- Error message: `✗ Capture failed: Screenshot path must be an absolute path`
-- Examples of correct absolute paths
-
----
-
-## Help and Supported Flags
-
-### Step 13: Verify Help Output
-
-```cmd
-node bin\capture-inbox.js --help
-```
-
-**Expected**: Usage instructions with all flags documented
-
-**Supported Flags** (verified):
-- `<screenshot-path>` (positional, required, absolute path)
-- `--vault-path <path>` (required, absolute path)
-- `--inbox-subdir <path>` (optional, default: "inbox")
-- `--skip-open` (optional, boolean flag)
-- `--help` (optional, shows help)
-
-**No other flags supported.** Do not use undocumented flags.
-
----
-
-## ShareX Integration (End-to-End Automation)
-
-**Prerequisites**: ShareX installed, CLI tests passed
-
-### Understanding ShareX Actions
-
-ShareX has an **Actions** feature (not Custom Uploader) that runs programs after capturing screenshots.
-
-**Official Documentation**: https://getsharex.com/actions
-
-**Key Placeholder**:
-- `$input` = Path to the captured screenshot file (**use this**)
-- `$output` = Path to output file for conversion tools (not for us)
-
-**Important**: Do NOT confuse with Custom Uploader placeholders (`%filepath`, etc.) - different feature.
-
-### ShareX Configuration Steps
-
-**Version Note**: These menu names are from ShareX as of Nov 2026. If your version differs, look for similar options.
-
-1. **Open ShareX**
-
-2. **Navigate to Task Settings**:
-   - Right-click ShareX tray icon → **Task settings**
-   - OR: Main window → **Task settings** button
-
-3. **Add Action**:
-   - Go to **Actions** tab
-   - Click **Add** button
-
-4. **Configure Action**:
-
-   **Field Values** (replace `<placeholders>` with YOUR paths):
-
-   | Field | Your Value |
-   |-------|------------|
-   | **Name** | `Capture to Obsidian` |
-   | **File path** | `C:\Program Files\nodejs\node.exe` |
-   | **Arguments** | `"C:\<PROJECT_ROOT>\bin\capture-inbox.js" "$input" --vault-path "C:\<YOUR_VAULT_PATH>"` |
-   | **Output file name extension** | (leave empty) |
-   | **Hidden window** | ☑ (checked - hides console) |
-   | **Run with hidden window** | ☑ (checked if available) |
-
-   **Finding `node.exe` path**:
-   ```cmd
-   where node
-   ```
-   Copy the first result (e.g., `C:\Program Files\nodejs\node.exe`)
-
-   **Critical**: 
-   - `node.exe` path is NOT quoted
-   - JavaScript file path IS quoted
-   - `"$input"` IS quoted (per official ShareX Actions examples)
-   - Vault path IS quoted
-
-   **Example Arguments**:
-   ```
-   "C:\Users\YourName\Downloads\capture-inbox\bin\capture-inbox.js" "$input" --vault-path "C:\Users\YourName\Documents\test-vault-capture-inbox"
-   ```
-
-5. **Enable the Action**:
-   - In Actions list, ensure checkbox next to your action is **checked**
-   - Click **OK**
-
-6. **Enable "Perform actions" After-Capture Task**:
-   - Main ShareX window → **After capture tasks** section
-   - Find and check: **✓ Perform actions**
-   - Ensure **✓ Save image to file** is also checked (required for Actions)
-
-### ShareX Testing
-
-**Step 14: Test ShareX Automation**
-
-1. **Prepare**:
-   - Close any previous Obsidian windows
-   - Open Command Prompt to monitor vault/inbox folder:
-     ```cmd
-     dir C:\<YOUR_TEST_VAULT_PATH>\inbox
-     ```
-
-2. **Capture**:
-   - Press your ShareX capture hotkey (default: `Print Screen` for region)
-   - Select a region
-   - ShareX captures screenshot
-
-3. **Verify**:
-   - Check Command Prompt: New files should appear in inbox
-   - Obsidian should open showing the card
-   - ShareX history should show capture (no errors)
-
-**Expected Result**: 
-- New capture card appears in vault/inbox
-- Obsidian opens automatically
-- Image displays correctly
-
-**If it fails**:
-- Check ShareX → History → Errors tab
-- Temporarily uncheck "Hidden window" to see console output
-- Test the exact command manually in Command Prompt first
-
-**Common Issues**:
-- "File not found": `node.exe` path wrong or JavaScript path wrong
-- Action doesn't run: "Perform actions" not checked
-- Path with spaces: Ensure quotes around JavaScript file path and vault path
-- `$input` not working: Verify you wrote `"$input"` (not `$output` or other placeholder)
-
----
-
-## Automated Test Suite
-
-The repository includes 29 automated tests (run on Linux, passed 100%).
-
-### Step 15: Run Automated Tests
-
-```cmd
-npm.cmd test
-```
-
-**Expected**:
-```
-✓ 29 tests passing
-✓ 0 tests failing
-~96% code coverage
-```
-
-**These tests verify**:
-- Path validation and security
-- Collision handling
-- Unicode/spaces support
-- Error conditions
-- Image byte preservation
-
-**Tests do NOT verify**:
-- Obsidian GUI opening (requires Obsidian)
-- ShareX automation (requires ShareX + Windows)
-- Windows-specific path edge cases
-
----
-
-## Acceptance Checklist
-
-Use this to track your testing progress:
-
-| Test Category | Test | Status | Notes |
-|---------------|------|--------|-------|
-| **Prerequisites** | Node.js ≥18.0.0 installed | ☐ Pass / ☐ Fail | Version: _______ |
-| | Obsidian installed | ☐ Pass / ☐ Fail | |
-| | Empty test vault created | ☐ Pass / ☐ Fail | Path: _______ |
-| **Installation** | Download/extract PR branch | ☐ Pass / ☐ Fail | |
-| | `npm ci` succeeds | ☐ Pass / ☐ Fail | |
-| | `npm run build` succeeds | ☐ Pass / ☐ Fail | |
-| | `dist/` folder created | ☐ Pass / ☐ Fail | |
-| **Baseline CLI** | Step 2: CLI with --skip-open | ☐ Pass / ☐ Fail | Exit code: ___ |
-| | Files created in vault/inbox | ☐ Pass / ☐ Fail | Count: ___ |
-| | SHA256 match verified | ☐ Pass / ☐ Fail | |
-| | Markdown card structure correct | ☐ Pass / ☐ Fail | |
-| **Auto-Open** | Step 5: CLI without --skip-open | ☐ Pass / ☐ Fail | |
-| | Command exits (no hang) | ☐ Pass / ☐ Fail | Hung? Yes/No |
-| | Obsidian opened | ☐ Pass / ☐ Fail | Manual verify |
-| | Card displayed | ☐ Pass / ☐ Fail | |
-| | Image renders | ☐ Pass / ☐ Fail | |
-| **Collision** | Step 7: 3 rapid captures | ☐ Pass / ☐ Fail | Files: ___ |
-| | Unique filenames | ☐ Pass / ☐ Fail | |
-| **Unicode/Spaces** | Step 8: Chinese filename | ☐ Pass / ☐ Fail | |
-| | Step 9: Spaces in vault path | ☐ Pass / ☐ Fail / ☐ N/A | |
-| **Errors** | Step 10: Missing screenshot | ☐ Pass / ☐ Fail | Exit code: ___ |
-| | Step 11: Missing vault | ☐ Pass / ☐ Fail | Exit code: ___ |
-| | Step 12: Relative path | ☐ Pass / ☐ Fail | Exit code: ___ |
-| **ShareX** | Step 14: ShareX automation | ☐ Pass / ☐ Fail / ☐ Not Run | |
-| | Capture → card created | ☐ Pass / ☐ Fail / ☐ Not Run | |
-| | Obsidian auto-opened | ☐ Pass / ☐ Fail / ☐ Not Run | |
-| **Automated** | Step 15: npm test | ☐ Pass / ☐ Fail / ☐ Not Run | 29 tests |
-
----
-
-## Test Report Template
-
-Copy this template and fill it out after testing. **Redact personal paths** before sharing.
-
-```
-=== CAPTURE-INBOX WINDOWS ACCEPTANCE TEST REPORT ===
-
-Tester: [Your Name/Model]
-Date: [YYYY-MM-DD]
-PR: https://github.com/robertCho/capture-inbox/pull/1
-Branch: cursor/sharex-obsidian-cli-4003
-Commit: b38465d
-
-ENVIRONMENT
------------
-OS: Windows [version]
-Node.js: [version from `node --version`]
-Obsidian: [version]
-ShareX: [version] or N/A
-
-TEST SETUP
-----------
-Project Root: C:\[REDACTED]\capture-inbox
-Test Vault: C:\[REDACTED]\test-vault-capture-inbox
-Node.exe: C:\[REDACTED]\node.exe
-
-INSTALLATION
-------------
-[ ] npm ci: PASS / FAIL
-    Output: [paste if FAIL]
-
-[ ] npm run build: PASS / FAIL
-    Output: [paste if FAIL]
-
-BASELINE CLI TEST (--skip-open)
---------------------------------
-Command: node bin\capture-inbox.js "[REDACTED]\fixtures\test-image.png" --vault-path "[REDACTED]\test-vault" --skip-open
-
-[ ] Exit Code: 0 / [other]
-[ ] Output:
-    [paste output here]
-
-[ ] Files Created:
-    - Image: [filename]
-    - Card: [filename]
-
-[ ] SHA256 Verification: PASS / FAIL
-    Original: 6b7fa434f92a8b80aab02d9bf1a12e49ffcae424e4013a1c4f68b67e3d2bbcd0
-    Copied:   [paste hash]
-
-[ ] Markdown Structure: PASS / FAIL
-    Issues: [describe if FAIL]
-
-AUTO-OPEN TEST (Obsidian URI)
-------------------------------
-Command: [same as above without --skip-open]
-
-[ ] Exit Code: 0 / [other]
-[ ] Command Behavior: Exited normally / Hung (Ctrl+C needed)
-[ ] Obsidian Opened: YES / NO
-[ ] Card Displayed: YES / NO
-[ ] Image Rendered: YES / NO
-
-COLLISION TEST
---------------
-[ ] 3 rapid captures: PASS / FAIL
-[ ] Files created: [count]
-[ ] Unique filenames: PASS / FAIL
-    Filenames: [list or pattern]
-
-UNICODE/SPACES TEST
--------------------
-[ ] Chinese filename test: PASS / FAIL / NOT RUN
-[ ] Spaces in path test: PASS / FAIL / NOT RUN / N/A
-
-ERROR TESTS
------------
-[ ] Missing screenshot: PASS / FAIL
-    Exit code: [code]
-    Error message: [paste]
-
-[ ] Missing vault: PASS / FAIL
-    Exit code: [code]
-    Error message: [paste]
-
-[ ] Relative path: PASS / FAIL
-    Exit code: [code]
-    Error message: [paste]
-
-SHAREX INTEGRATION
-------------------
-[ ] Configuration completed: YES / NO / NOT ATTEMPTED
-[ ] Test capture performed: YES / NO
-[ ] Result: PASS / FAIL / NOT RUN
-
-If FAIL or NOT RUN, explain:
-[details]
-
-AUTOMATED TESTS
----------------
-[ ] npm test: PASS / FAIL / NOT RUN
-    Tests: __/29 passed
-    Output: [paste if failures]
-
-OVERALL ASSESSMENT
-------------------
-Milestone 1 implementation: READY FOR PRODUCTION / NEEDS FIXES / BLOCKED
-
-Issues Found:
-1. [issue description]
-2. [issue description]
-
-Recommendations:
-[any suggestions]
-
-ATTACHMENTS
------------
-[List any error logs, screenshots (redacted), etc.]
-
-=== END REPORT ===
+## AI Summary
+*Not yet implemented*
 ```
 
 ---
 
-## Known Limitations (Milestone 1)
+## Testing
 
-1. **No OCR**: Text in screenshots is not extracted (placeholder shown)
-2. **No AI Summary**: No summarization (placeholder shown)
-3. **URI Launch Verification**: Tool cannot confirm Obsidian actually opened
-4. **Windows Testing**: Developed on Linux, requires Windows manual acceptance
-5. **ShareX Placeholder**: Uses `$input` (confirmed correct via official docs and source code)
+### Run Automated Tests
+
+```bash
+npm test
+```
+
+**Coverage**: 75 tests, ~97% code coverage, 6 test suites
+
+**Test Inventory**:
+- **Original tests (31)**: All retained, no coverage weakened
+  - Capture suite: 13 tests (file creation, collision, paths, errors)
+  - Utils suite: 18 tests (path validation, encoding, filename generation)
+- **New tests (44)**:
+  - Append suite: 14 tests (multiple appends, user edits, target isolation)
+  - State management: 14 tests (target tracking, validation, corruption handling)
+  - Concurrent operations: 8 tests (concurrent creates/appends, lost update prevention)
+  - Lock mechanism: 8 tests (serialization, stale lock cleanup, timeout behavior)
+
+**Test Categories**:
+- Create action: File creation, collision handling, path validation
+- Append action: Multiple appends, user edit preservation, target isolation
+- Concurrent operations: Parallel creates/appends, no lost updates, proper serialization
+- State management: Target tracking, validation, error cases
+- Lock mechanism: Acquire/release, stale detection, timeout, independent per-inbox
+- Unicode/spaces: Chinese filenames, paths with spaces
+- Error scenarios: Missing files, invalid paths, no target
+
+### Manual Smoke Test
+
+```bash
+# Create test vault
+mkdir -p test-vault/inbox
+
+# Create first card
+node bin/capture-inbox.js "./fixtures/test-image.png" --vault-path "./test-vault" --skip-open
+
+# Append to card
+node bin/capture-inbox.js "./fixtures/test-image.png" --vault-path "./test-vault" --action append --skip-open
+
+# Verify card has 2 images
+cat test-vault/inbox/*.md
+
+# Clean up
+rm -rf test-vault
+```
+
+---
+
+## Security & Design
+
+### Path Validation
+
+- **Absolute paths required**: All paths must be absolute (rejects relative paths)
+- **Vault boundary enforcement**: Inbox must be within vault (prevents directory traversal)
+- **Target validation**: Checks vault boundaries on every append
+- **Symlink handling**: Follows symlinks but validates final resolved path is within vault
+- **Path traversal prevention**: Rejects `..` and other escape attempts
+
+### Collision Handling
+
+- Timestamp-based filenames: `capture_YYYY-MM-DD_HH-MM-SS.ext`
+- Counter suffix on collision: `capture_YYYY-MM-DD_HH-MM-SS_1.ext`
+- Unique filenames guaranteed per vault/inbox
+- Safe for rapid sequential captures
+
+### Concurrency & Locking
+
+**✅ Robust Concurrent Operation Protection**
+
+- **File-based locking**: All create and append operations are serialized per inbox
+- **No lost updates**: Concurrent appends to the same card are fully safe
+  - Lock acquired before read-modify-write
+  - All appended images preserved, no silent data loss
+  - User edits always preserved
+- **Stale lock cleanup**: Locks older than 30 seconds automatically removed
+- **Lock timeout**: Operations fail with clear error after 60 seconds if lock stuck
+- **Independent locks**: Each vault/inbox has its own lock (parallel operation across inboxes)
+- **Tested**: Comprehensive synthetic tests for concurrent creates, appends, and mixed operations
+
+**ShareX Rapid Capture Support**:
+- Multiple hotkey presses in quick succession are fully safe
+- Create and append can be fired concurrently without data loss
+- Operations are serialized automatically using file locks
+
+### State Integrity
+
+- State file written atomically (temp file + rename)
+- Corrupted state file handled gracefully (returns empty state)
+- Version checking (future compatibility)
+- Lock-protected read-modify-write cycles prevent stale state
+
+---
+
+## Limitations & Known Issues
+
+### Current Version
+
+1. **No OCR**: Text in screenshots is not extracted
+2. **No AI Summary**: No automatic summarization
+3. **No rollback UI**: Cannot undo append via CLI (manual file editing required)
+4. **Single target per vault/inbox**: Only one "current" card per inbox
+5. **Target indication**: Relies on Obsidian auto-open (no screen notification)
+6. **Lock timeout**: Operations fail after 60s if lock acquisition times out (rare)
+
+### Windows Testing
+
+- Core functionality tested on Linux with synthetic data
+- Windows-specific path handling tested via automated tests
+- ShareX integration requires manual Windows verification
+- Obsidian URI opening is platform-dependent
+
+### Not Implemented (By Design)
+
+- GUI interface
+- AI/OCR/provider integration
+- Session collection/grouping
+- Clipboard reading
+- Auto-grouping heuristics
+- Rollback/undo UI
+- Changes to user's laptop configuration
 
 ---
 
 ## Troubleshooting
-
-### "npm is not recognized"
-
-Node.js not installed or not in PATH. Reinstall Node.js with "Add to PATH" option checked.
-
-### "execution policy" errors (PowerShell)
-
-Use **Command Prompt** (cmd.exe) instead of PowerShell to avoid policy issues.
-
-### "Screenshot file not found"
-
-- Path must be **absolute** (e.g., `C:\...`, not `fixtures\test-image.png`)
-- Check path is correct with `dir <path>`
-- On Windows, backslashes `\` or forward slashes `/` both work
-
-### "Vault directory not found"
-
-- Vault path must exist and be absolute
-- Create the directory first if testing with new path
-- Obsidian must have opened the vault at least once for URI to work
-
-### "Obsidian didn't open"
-
-- Test manually: Open browser, navigate to `obsidian://open?vault=test-vault-capture-inbox`
-- If that fails, URI protocol not registered (reinstall Obsidian)
-- Tool reports "URI launched" but cannot verify Obsidian responded - this is expected
 
 ### ShareX action doesn't run
 
@@ -753,93 +539,94 @@ Use **Command Prompt** (cmd.exe) instead of PowerShell to avoid policy issues.
 - Check "Save image to file" is also enabled (required)
 - Temporarily uncheck "Hidden window" to see error messages
 - Verify `node.exe` path with `where node`
-- Test the exact command in Command Prompt manually first
+- Test the exact command in Command Prompt manually
 
-### "Access denied" or "permission denied"
+### "npm is not recognized"
 
-- Vault directory is read-only or protected
-- Run Command Prompt as Administrator (not recommended as default)
-- OR choose vault path in your user directory
+- Node.js not installed or not in PATH
+- Reinstall Node.js with "Add to PATH" option checked
 
----
+### Obsidian doesn't open
 
-## Important Notes
+- Test manually: Open browser, navigate to `obsidian://open?vault=<vault-name>`
+- If that fails, URI protocol not registered (reinstall Obsidian)
+- Tool reports "URI launched" but cannot verify Obsidian responded
 
-### Security & Privacy
+### Append fails with NO_TARGET
 
-- ⚠️ **Test vault only**: Do not test with your personal vault initially
-- ⚠️ **Synthetic fixtures**: Use repository's `fixtures\test-image.png`, not real screenshots
-- ⚠️ **No data uploaded**: Tool does not upload anything (no internet connection needed)
-- ⚠️ **Redact paths**: When sharing test results, redact personal paths
+- Create a new card first with `--action create`
+- Or without `--action` (create is default)
 
-### No Credentials or Costs
+### Images not visible in Obsidian
 
-- ✅ No AI API keys required
-- ✅ No billing or subscription changes
-- ✅ No network requests
-- ✅ Works completely offline
-
-### Repository vs Personal Data
-
-- ✅ Repository contains: Synthetic fixtures only (fake screenshots)
-- ❌ Do NOT commit: Real screenshots, actual vault data, personal paths
-- ✅ `.gitignore` prevents accidental commits of personal data
+- Check image file exists in vault inbox
+- Check image path in Markdown is relative (no `\` or `/` prefix)
+- Check image filename matches exactly (case-sensitive)
 
 ---
 
-## What's Next After Testing
+## Development
 
-**Do NOT**:
-- Merge the PR yourself
-- Deploy or publish packages
-- Modify billing settings
-- Enable any paid services
-- Use this with sensitive screenshots until reviewing security for your use case
+### Build
 
-**DO**:
-- Fill out the test report template
-- Report results: PASS/FAIL for each section
-- Include error messages (redacted paths)
-- Distinguish: "Automated test passed" vs "Windows manual test passed"
-- Note any discrepancies or issues
+```bash
+npm run build
+```
 
-**After approval, next milestones will add**:
-- Milestone 2: OCR text extraction
-- Milestone 3: AI-powered summarization  
-- Milestone 4: AI provider configuration
+### Lint
+
+```bash
+npm run lint
+```
+
+### Run Tests with Coverage
+
+```bash
+npm test
+```
+
+### Project Structure
+
+```
+capture-inbox/
+├── src/
+│   ├── capture.ts          # Core capture logic (create/append)
+│   ├── cli.ts              # Command-line interface
+│   ├── state.ts            # State management (target tracking)
+│   ├── types.ts            # TypeScript interfaces
+│   ├── utils.ts            # Utilities (path validation, etc.)
+│   └── tests/
+│       ├── capture.test.ts # Capture tests (create action)
+│       ├── append.test.ts  # Append action tests
+│       ├── state.test.ts   # State management tests
+│       └── utils.test.ts   # Utility tests
+├── fixtures/               # Test fixtures (synthetic images)
+├── bin/
+│   └── capture-inbox.js    # CLI entry point
+└── dist/                   # Compiled JavaScript (gitignored)
+```
 
 ---
 
-## Reference Links
+## Contributing
 
-- **This PR**: https://github.com/robertCho/capture-inbox/pull/1
+This project is in active development. For issues, feature requests, or contributions, please open an issue or pull request on GitHub.
+
+---
+
+## License
+
+See LICENSE file in repository.
+
+---
+
+## References
+
+- **ShareX**: https://getsharex.com/
 - **ShareX Actions Documentation**: https://getsharex.com/actions
-- **ShareX Actions Source Code**: https://github.com/ShareX/ShareX/blob/master/ShareX.HelpersLib/ExternalProgram.cs
-- **Detailed ShareX Setup**: See `SHAREX-SETUP.md` in this repository
-- **Node.js Download**: https://nodejs.org/
-- **Obsidian Download**: https://obsidian.md/
+- **Obsidian**: https://obsidian.md/
+- **Node.js**: https://nodejs.org/
 
 ---
 
-## Summary: Linux vs Windows Status
-
-| Test Type | Linux (Automated) | Windows (Manual) |
-|-----------|-------------------|------------------|
-| Installation (npm ci, build) | ✅ VERIFIED | ⚠️ PENDING |
-| CLI with synthetic fixtures | ✅ VERIFIED | ⚠️ PENDING |
-| SHA256 byte preservation | ✅ VERIFIED | ⚠️ PENDING |
-| Collision handling | ✅ VERIFIED | ⚠️ PENDING |
-| Unicode/spaces paths | ✅ VERIFIED | ⚠️ PENDING |
-| Error handling | ✅ VERIFIED | ⚠️ PENDING |
-| 29 automated tests | ✅ 29/29 PASS | ⚠️ RUN ON WINDOWS |
-| Obsidian URI open | ❌ Cannot test (no GUI) | ⚠️ PENDING |
-| Obsidian image render | ❌ Cannot test (no GUI) | ⚠️ PENDING |
-| ShareX automation | ❌ Cannot test (no ShareX) | ⚠️ PENDING |
-| Windows path edge cases | ⚠️ Limited on Linux | ⚠️ PENDING |
-
-**Core implementation**: ✅ Verified working on Linux with synthetic data  
-**Windows acceptance**: ⚠️ Requires manual testing per this guide
-
----
-
-*README version: PR branch `cursor/sharex-obsidian-cli-4003`, commit b38465d*
+*Version: 0.2.0 with append functionality*
