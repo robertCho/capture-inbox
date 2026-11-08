@@ -19,14 +19,17 @@ Perfect for preserving discussion fragments, troubleshooting sessions, or multi-
 
 ✅ **Implemented**:
 - Accepts screenshot path from ShareX after-capture action
-- Copies screenshot to Obsidian vault inbox (preserves exact bytes)
-- Creates/updates Markdown cards with embedded images
+- Copies screenshot to `inbox/attachments/` (preserves exact bytes)
+- Creates Markdown cards in the inbox with portable relative image refs
+- Distinct user-editable **My Notes** section (never AI-filled)
+- Claude Code session ID provenance from official env/hooks (never guessed)
 - Opens card in Obsidian via URI protocol
 - Collision-safe timestamp-based filenames
 - Target isolation per vault/inbox combination
 - State management with explicit target tracking
 - Path validation and security
 - Comprehensive error handling
+- Legacy flat inbox cards remain displayable and appendable (no auto-migration)
 
 ❌ **NOT Implemented** (future milestones):
 - OCR text recognition (placeholder shown in cards)
@@ -230,6 +233,58 @@ Or simply create a new card with `--action create`.
 
 ---
 
+## File layout
+
+```
+<vault>/<inbox>/
+  capture_2026-11-08_14-23-45.md      # card (inbox root)
+  attachments/
+    capture_2026-11-08_14-23-45.png   # new images
+  .capture-inbox-state/
+    current-target.json
+```
+
+Markdown refs are POSIX-relative from the card: `attachments/capture_2026-11-08_14-23-45.png`.
+Spaces in refs are percent-encoded; unicode is kept as UTF-8. Vault or inbox names with spaces/unicode do not appear in the ref.
+
+**Legacy cards** that already store `![Screenshot](capture_....png)` next to the `.md` file stay as they are. Append adds new files under `attachments/` and does not move or rewrite old images.
+
+---
+
+## Claude Code session provenance
+
+A plain screenshot has no session ID. This tool **never** guesses the latest/active Claude Code session, window title, or transcript.
+
+**Official sources only** ([env vars](https://code.claude.com/docs/en/env-vars), [hooks](https://code.claude.com/docs/en/hooks)):
+
+| Source | When it is present | Flag / field |
+| --- | --- | --- |
+| `CLAUDE_CODE_SESSION_ID` | Claude Code child processes (Bash/PowerShell tools, hook commands, stdio MCP) | read automatically |
+| Hook JSON `session_id` | Command hooks receive this on stdin | `--from-hook` |
+| `--session-id` | Caller already knows the ID | explicit, never inferred |
+
+Matching sources are accepted. Disagreeing sources fail with `SESSION_ID_CONFLICT` (no silent pick). Source-less captures are valid and leave session fields off the card.
+
+On **append**, the card keeps the provenance it was created with. A source-less ShareX append does not clear a stored ID. A different incoming ID fails with `SESSION_MISMATCH`. An incoming ID is not written onto a source-less card.
+
+Stored IDs are metadata only. Resume later with `claude --resume <session-id>`. This does **not** jump to a historical message or auto-fork a session.
+
+### Product decision: ShareX cannot auto-bind a session
+
+ShareX After Capture is **not** a Claude Code child, so it does not receive `CLAUDE_CODE_SESSION_ID`. There is no official ShareX placeholder for a Claude session ID.
+
+A "write latest session to a sidecar" hook would be unsafe with multiple concurrent CLI sessions and is **not implemented**.
+
+**What this means in practice:**
+
+- ShareX create/append → source-less cards unless you pass `--session-id` in that ShareX action (one hardcoded ID; wrong across multiple sessions).
+- Automatic ID stamping works when `capture-inbox` is spawned by Claude Code (env) or as a hook command (`--from-hook` plus a screenshot path).
+- That is the automatic integration. `--session-id` is an explicit extra path, not a stand-in for ShareX auto-linkage.
+
+See `examples/claude-code-hooks.md` for the hook command shape.
+
+---
+
 ## Command-Line Reference
 
 ### Synopsis
@@ -247,6 +302,8 @@ capture-inbox <screenshot-path> --vault-path <path> [options]
 - `--vault-path <path>` (required): Absolute path to Obsidian vault
 - `--action <type>` (optional): Action type: `create` or `append` (default: `create`)
 - `--inbox-subdir <path>` (optional): Subdirectory within vault (default: `inbox`)
+- `--session-id <id>` (optional): Explicit Claude Code session ID (never guessed)
+- `--from-hook` (optional): Read official hook JSON from stdin and use `session_id`
 - `--skip-open` (optional): Don't open Obsidian after capture
 - `--help`: Show help message
 
@@ -257,10 +314,11 @@ capture-inbox <screenshot-path> --vault-path <path> [options]
 Creates a new capture card and sets it as the current target.
 
 **Behavior**:
-- Copies screenshot to vault inbox
+- Copies screenshot to `<inbox>/attachments/`
 - Generates unique timestamp-based filenames
-- Creates new Markdown card
+- Creates new Markdown card in the inbox (with empty My Notes)
 - Stores card as current target for future appends
+- Records Claude Code session ID when an official source provides one
 - Opens card in Obsidian (unless `--skip-open`)
 
 **Compatible with**: Existing ShareX configurations (default action)
@@ -271,15 +329,16 @@ Appends screenshot to the current target card.
 
 **Behavior**:
 - Validates that a target card exists
-- Copies screenshot to vault inbox with unique filename
-- Appends image reference to existing card (before OCR section)
-- Preserves user edits in the card
+- Copies screenshot to `<inbox>/attachments/` with unique filename
+- Appends a portable relative image reference (before My Notes, else before OCR)
+- Preserves My Notes, frontmatter provenance, and arbitrary user edits
 - Opens the same card in Obsidian (unless `--skip-open`)
 
 **Fails if**:
 - No target card exists (error: `NO_TARGET`)
 - Target card was deleted or moved (error: `TARGET_MISSING`)
 - Target is in a different vault/inbox
+- Incoming session ID disagrees with the card (`SESSION_MISMATCH`)
 
 ### Examples
 
@@ -337,11 +396,14 @@ capture-inbox screenshot.png --vault-path "./vault" --inbox-subdir "daily/captur
 ---
 created: 2026-11-08T14:23:45.123Z
 tags: [capture, inbox]
+claudeCodeSessionId: "550e8400-e29b-41d4-a716-446655440000"
 ---
 
 # Capture 2026-11-08
 
-![Screenshot](capture_2026-11-08_14-23-45.png)
+![Screenshot](attachments/capture_2026-11-08_14-23-45.png)
+
+## My Notes
 
 ## OCR Text
 *Not yet implemented*
@@ -350,21 +412,28 @@ tags: [capture, inbox]
 *Not yet implemented*
 ```
 
+`claudeCodeSessionId` is omitted for source-less captures. **My Notes** is left empty for the user; it is never OCR/AI-filled.
+
 ### After Append (--action append)
 
 ```markdown
 ---
 created: 2026-11-08T14:23:45.123Z
 tags: [capture, inbox]
+claudeCodeSessionId: "550e8400-e29b-41d4-a716-446655440000"
 ---
 
 # Capture 2026-11-08
 
-![Screenshot](capture_2026-11-08_14-23-45.png)
+![Screenshot](attachments/capture_2026-11-08_14-23-45.png)
 
-![Screenshot](capture_2026-11-08_14-23-47.png)
+![Screenshot](attachments/capture_2026-11-08_14-23-47.png)
 
-![Screenshot](capture_2026-11-08_14-23-49.png)
+![Screenshot](attachments/capture_2026-11-08_14-23-49.png)
+
+## My Notes
+
+Typed notes stay here across appends.
 
 ## OCR Text
 *Not yet implemented*
@@ -387,15 +456,19 @@ tags: [capture, inbox, bug-investigation]
 
 User reported login fails on Safari.
 
-![Screenshot](capture_2026-11-08_14-23-45.png)
+![Screenshot](attachments/capture_2026-11-08_14-23-45.png)
 
 **Finding**: Console shows CORS error
 <!-- User added these notes after first screenshot -->
 
-![Screenshot](capture_2026-11-08_14-23-47.png)
+![Screenshot](attachments/capture_2026-11-08_14-23-47.png)
 
 **Solution**: Added missing header
 <!-- Append added this second screenshot, preserved user notes -->
+
+## My Notes
+
+Keep investigation notes here; append will not overwrite them.
 
 ## OCR Text
 *Not yet implemented*
@@ -414,17 +487,23 @@ User reported login fails on Safari.
 npm test
 ```
 
-**Coverage**: 75 tests, ~97% code coverage, 6 test suites
+**Coverage**: 127 tests, PR2 baseline 84 retained (one original relative-path assertion updated for `attachments/` refs)
 
 **Test Inventory**:
-- **Original tests (31)**: All retained, no coverage weakened
+- **PR2 baseline (84)**: All retained
   - Capture suite: 13 tests (file creation, collision, paths, errors)
   - Utils suite: 18 tests (path validation, encoding, filename generation)
-- **New tests (44)**:
   - Append suite: 14 tests (multiple appends, user edits, target isolation)
   - State management: 14 tests (target tracking, validation, corruption handling)
-  - Concurrent operations: 8 tests (concurrent creates/appends, lost update prevention)
-  - Lock mechanism: 8 tests (serialization, stale lock cleanup, timeout behavior)
+  - Concurrent operations: 8 tests
+  - Lock mechanism: 8 tests
+  - State write races: 5 tests
+  - Subprocess races: 4 tests
+- **v0.3.0 tests (43)**:
+  - Session provenance: 23 tests (official sources, conflicts, per-card append, no guessing)
+  - Attachments / legacy: 8 tests (subfolder, portable refs, flat-card append, no migration)
+  - My Notes: 7 tests (empty on create, preserved on append, not invented on legacy)
+  - CLI smoke: 5 tests (source-less, `--session-id`, env, `--from-hook`, conflict)
 
 **Test Categories**:
 - Create action: File creation, collision handling, path validation
@@ -447,8 +526,9 @@ node bin/capture-inbox.js "./fixtures/test-image.png" --vault-path "./test-vault
 # Append to card
 node bin/capture-inbox.js "./fixtures/test-image.png" --vault-path "./test-vault" --action append --skip-open
 
-# Verify card has 2 images
+# Verify card has 2 images and attachments/ refs
 cat test-vault/inbox/*.md
+ls test-vault/inbox/attachments/
 
 # Clean up
 rm -rf test-vault
@@ -511,6 +591,8 @@ rm -rf test-vault
 4. **Single target per vault/inbox**: Only one "current" card per inbox
 5. **Target indication**: Relies on Obsidian auto-open (no screen notification)
 6. **Lock timeout**: Operations fail after 60s if lock acquisition times out (rare)
+7. **ShareX has no official Claude session channel**: source-less unless `--session-id` is passed on purpose
+8. **No historical-message jump / auto-fork**: session ID is stored, not used to resume a turn automatically
 
 ### Windows Testing
 
@@ -523,7 +605,9 @@ rm -rf test-vault
 
 - GUI interface
 - AI/OCR/provider integration
-- Session collection/grouping
+- Guessing the latest/active Claude Code session
+- Reading Claude transcripts, databases, or app-internal config
+- Automatic migration of legacy flat images
 - Clipboard reading
 - Auto-grouping heuristics
 - Rollback/undo UI
@@ -559,8 +643,9 @@ rm -rf test-vault
 
 ### Images not visible in Obsidian
 
-- Check image file exists in vault inbox
-- Check image path in Markdown is relative (no `\` or `/` prefix)
+- New cards: image files live in `<inbox>/attachments/`, refs look like `attachments/capture_....png`
+- Legacy cards: same-folder refs such as `capture_....png` are still valid
+- Check the image path in Markdown is relative (forward slashes, no drive letter)
 - Check image filename matches exactly (case-sensitive)
 
 ---
@@ -591,15 +676,14 @@ npm test
 capture-inbox/
 ├── src/
 │   ├── capture.ts          # Core capture logic (create/append)
+│   ├── card.ts             # Card markdown (My Notes, image insert)
+│   ├── attachments.ts      # inbox/attachments paths and markdown refs
+│   ├── provenance.ts       # Official Claude Code session ID resolution
 │   ├── cli.ts              # Command-line interface
 │   ├── state.ts            # State management (target tracking)
 │   ├── types.ts            # TypeScript interfaces
 │   ├── utils.ts            # Utilities (path validation, etc.)
 │   └── tests/
-│       ├── capture.test.ts # Capture tests (create action)
-│       ├── append.test.ts  # Append action tests
-│       ├── state.test.ts   # State management tests
-│       └── utils.test.ts   # Utility tests
 ├── fixtures/               # Test fixtures (synthetic images)
 ├── bin/
 │   └── capture-inbox.js    # CLI entry point
@@ -626,7 +710,10 @@ See LICENSE file in repository.
 - **ShareX Actions Documentation**: https://getsharex.com/actions
 - **Obsidian**: https://obsidian.md/
 - **Node.js**: https://nodejs.org/
+- **Claude Code env vars**: https://code.claude.com/docs/en/env-vars
+- **Claude Code hooks**: https://code.claude.com/docs/en/hooks
+- **Claude Code sessions / `--resume`**: https://code.claude.com/docs/en/cli-reference
 
 ---
 
-*Version: 0.2.0 with append functionality*
+*Version: 0.3.0 (based on PR2 / 0.2.0 append head)*

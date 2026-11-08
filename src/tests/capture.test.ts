@@ -160,7 +160,7 @@ describe('Capture', () => {
     const cardContent = await readFile(result.cardPath, 'utf-8');
 
     const imageName = result.imagePath.split(/[\\/]/).pop();
-    assert.ok(cardContent.includes(`![Screenshot](${imageName})`));
+    assert.ok(cardContent.includes(`![Screenshot](attachments/${imageName})`));
 
     await rm(testDir, { recursive: true, force: true });
   });

@@ -1,6 +1,13 @@
 import { parseArgs } from 'node:util';
+import { stdin } from 'node:process';
 import { captureScreenshot } from './capture.js';
 import type { CaptureConfig, CaptureAction } from './types.js';
+import {
+  CLAUDE_CODE_SESSION_ENV,
+  parseHookSessionId,
+  resolveSessionProvenance,
+} from './provenance.js';
+import { createError } from './utils.js';
 
 interface CliArgs {
   values: {
@@ -8,6 +15,8 @@ interface CliArgs {
     'inbox-subdir'?: string;
     'skip-open'?: boolean;
     'action'?: string;
+    'session-id'?: string;
+    'from-hook'?: boolean;
     help?: boolean;
   };
   positionals: string[];
@@ -26,6 +35,8 @@ OPTIONS:
   --vault-path <path>       Path to the Obsidian vault (required)
   --inbox-subdir <path>     Subdirectory within vault for captures (default: "inbox")
   --action <type>           Action type: "create" or "append" (default: "create")
+  --session-id <id>         Explicit Claude Code session ID (does not guess latest)
+  --from-hook               Read official hook JSON from stdin and use session_id
   --skip-open               Don't open the card in Obsidian after creation
   --help                    Show this help message
 
@@ -36,8 +47,19 @@ ACTIONS:
 
   append    Append screenshot to the current target card
             Requires a card to have been created first with --action create
-            Preserves user edits in the card
+            Preserves user edits and the My Notes section
             Opens the same card in Obsidian
+
+SESSION PROVENANCE:
+  Automatic only when this process is a Claude Code child:
+    CLAUDE_CODE_SESSION_ID env, or hook stdin session_id with --from-hook.
+
+  ShareX After Capture is not a Claude Code child, so those captures are
+  source-less unless you pass --session-id. This tool never guesses the
+  latest/active session or reads transcripts.
+
+  Resume a stored session later with: claude --resume <session-id>
+  This stores the ID only; it does not jump to a historical message or fork.
 
 EXAMPLES:
   # Create new card (first hotkey - default action)
@@ -46,8 +68,11 @@ EXAMPLES:
   # Append to current card (second hotkey)
   capture-inbox "C:\\Users\\user\\Screenshots\\capture.png" --vault-path "C:\\Users\\user\\ObsidianVault" --action append
 
-  # Create with explicit action flag
-  capture-inbox screenshot.png --vault-path "/path/to/vault" --action create
+  # Automatic session ID when spawned by Claude Code (env is set for you)
+  capture-inbox screenshot.png --vault-path "/path/to/vault" --skip-open
+
+  # Hook command: screenshot path as argv, hook JSON on stdin
+  capture-inbox screenshot.png --vault-path "/path/to/vault" --from-hook --skip-open
 
   # Testing without opening Obsidian
   capture-inbox test.png --vault-path "./test-vault" --skip-open
@@ -69,15 +94,61 @@ SHAREX INTEGRATION:
   5. Replace YOUR_VAULT_PATH with your actual Obsidian vault location
 
   Note: Use $input (ShareX Actions placeholder for captured file)
+  ShareX does not receive CLAUDE_CODE_SESSION_ID. Leave session unset
+  (source-less) or pass --session-id only when you intend one fixed ID.
 
 STATE MANAGEMENT:
   The tool stores current target state in:
     <vault>/<inbox>/.capture-inbox-state/current-target.json
 
-  This file tracks which card is the current append target.
-  It is automatically created when you use --action create.
-  You can delete this file to reset the current target.
+  New images are stored in:
+    <vault>/<inbox>/attachments/
+
+  Cards remain in the inbox root. Legacy same-folder cards still append.
 `;
+
+const HOOK_STDIN_TIMEOUT_MS = 2000;
+
+export async function readHookStdin(
+  stream: NodeJS.ReadableStream = stdin,
+  timeoutMs: number = HOOK_STDIN_TIMEOUT_MS
+): Promise<string> {
+  const readable = stream as NodeJS.ReadStream;
+  if (typeof readable.isTTY === 'boolean' && readable.isTTY) {
+    throw createError('--from-hook requires hook JSON on stdin', 'INVALID_HOOK_INPUT');
+  }
+
+  return await new Promise((resolve, reject) => {
+    const chunks: string[] = [];
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(createError('--from-hook timed out waiting for stdin JSON', 'INVALID_HOOK_INPUT'));
+    }, timeoutMs);
+
+    const onData = (chunk: string | Buffer) => {
+      chunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+    };
+    const onEnd = () => {
+      cleanup();
+      resolve(chunks.join(''));
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      stream.off('data', onData);
+      stream.off('end', onEnd);
+      stream.off('error', onError);
+    };
+
+    stream.setEncoding('utf8');
+    stream.on('data', onData);
+    stream.on('end', onEnd);
+    stream.on('error', onError);
+  });
+}
 
 export async function main(argv: string[]): Promise<void> {
   let args: CliArgs;
@@ -90,6 +161,8 @@ export async function main(argv: string[]): Promise<void> {
         'inbox-subdir': { type: 'string' },
         'skip-open': { type: 'boolean', default: false },
         'action': { type: 'string' },
+        'session-id': { type: 'string' },
+        'from-hook': { type: 'boolean', default: false },
         'help': { type: 'boolean', default: false },
       },
       allowPositionals: true,
@@ -125,12 +198,45 @@ export async function main(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
+  let hookSessionId: string | null | undefined;
+  if (args.values['from-hook']) {
+    try {
+      const hookJson = await readHookStdin();
+      hookSessionId = parseHookSessionId(hookJson);
+    } catch (error) {
+      const err = error as Error & { code?: string };
+      console.error('✗ Capture failed:', err.message);
+      process.exit(1);
+    }
+  }
+
+  let provenance;
+  try {
+    provenance = resolveSessionProvenance({
+      explicitSessionId: args.values['session-id'],
+      hookSessionId,
+      envSessionId: process.env[CLAUDE_CODE_SESSION_ENV],
+    });
+  } catch (error) {
+    const err = error as Error & { code?: string };
+    console.error('✗ Capture failed:', err.message);
+    if (err.code === 'SESSION_ID_CONFLICT') {
+      console.error('  Provided session IDs disagree. Refusing to guess which session to use.');
+    } else if (err.code === 'INVALID_SESSION_ID') {
+      console.error('  Session IDs must come from official Claude Code env/hooks or --session-id.');
+      console.error('  This tool never picks the latest/active session or reads transcripts.');
+    }
+    process.exit(1);
+  }
+
   const screenshotPath = args.positionals[0];
   const config: CaptureConfig = {
     vaultPath: args.values['vault-path'],
     inboxSubdir: args.values['inbox-subdir'] || 'inbox',
     skipOpen: args.values['skip-open'],
     action: action as CaptureAction,
+    sessionId: provenance.sessionId,
+    sessionIdSource: provenance.source,
   };
 
   try {
@@ -140,6 +246,11 @@ export async function main(argv: string[]): Promise<void> {
     console.log(`  Action: ${action}`);
     console.log(`  Image saved: ${result.imagePath}`);
     console.log(`  Card saved: ${result.cardPath}`);
+    if (result.sessionId) {
+      console.log(`  Claude Code session: ${result.sessionId} (${provenance.source ?? 'card'})`);
+    } else {
+      console.log('  Claude Code session: none (source-less capture)');
+    }
     
     if (config.skipOpen) {
       console.log('  Obsidian open: skipped');
@@ -173,6 +284,9 @@ export async function main(argv: string[]): Promise<void> {
     } else if (err.code === 'TARGET_MISSING') {
       console.error('  The current target card has been deleted or moved');
       console.error('  Create a new card with: --action create');
+    } else if (err.code === 'SESSION_MISMATCH') {
+      console.error('  This card is already associated with a different Claude Code session');
+      console.error('  Create a new card for the other session, or omit --session-id to keep the card ID');
     }
     
     process.exit(1);
