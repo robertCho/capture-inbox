@@ -1,0 +1,22 @@
+{
+  "// NOTE": "Config file support is NOT implemented yet - this is a future feature",
+  "// CURRENT": "Use CLI arguments: --vault-path and --inbox-subdir",
+  
+  "vaultPath": "C:\\Users\\YourName\\Documents\\MyVault",
+  "inboxSubdir": "inbox",
+  "autoOpen": true,
+  
+  "// Example paths": {
+    "windows": "C:\\Users\\YourName\\Documents\\MyVault",
+    "windowsWithSpaces": "C:\\Users\\Your Name\\My Vault",
+    "windowsWithChinese": "C:\\Users\\用户\\笔记本",
+    "network": "\\\\server\\share\\vault",
+    "unixStyle": "/home/user/vault"
+  },
+  
+  "// Example inbox subdirs": {
+    "simple": "inbox",
+    "nested": "daily/captures",
+    "dated": "2026/11/captures"
+  }
+}

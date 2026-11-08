@@ -1,0 +1,24 @@
+{
+  "name": "capture-inbox",
+  "version": "0.1.0",
+  "description": "CLI tool to capture screenshots from ShareX and create Obsidian cards",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "capture-inbox": "./bin/capture-inbox.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test --experimental-test-coverage dist/tests/*.test.js",
+    "pretest": "npm run build",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": ["sharex", "obsidian", "screenshot", "capture"],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}
