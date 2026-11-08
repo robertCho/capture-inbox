@@ -1,4 +1,4 @@
-import { access, constants } from 'node:fs/promises';
+import { access, constants, open } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, sep, normalize } from 'node:path';
 
 /**
@@ -35,24 +35,36 @@ export function generateTimestampFilename(extension: string): string {
 }
 
 /**
- * Creates a safe filename, handling potential collisions
+ * Reserve a unique filename by creating it exclusively (O_EXCL / wx).
+ * Check-then-write is not safe: two processes can see the same missing
+ * timestamp name and overwrite one card. The empty reservation is filled
+ * by the caller with writeFile/copyFile.
  */
 export async function generateUniqueFilename(
   directory: string,
   baseFilename: string,
   extension: string
 ): Promise<string> {
-  let filename = `${baseFilename}${extension}`;
-  let fullPath = join(directory, filename);
-  let counter = 1;
+  let counter = 0;
 
-  while (await fileExists(fullPath)) {
-    filename = `${baseFilename}_${counter}${extension}`;
-    fullPath = join(directory, filename);
-    counter++;
+  while (true) {
+    const filename = counter === 0
+      ? `${baseFilename}${extension}`
+      : `${baseFilename}_${counter}${extension}`;
+    const fullPath = join(directory, filename);
+
+    try {
+      const fd = await open(fullPath, 'wx');
+      await fd.close();
+      return filename;
+    } catch (error: any) {
+      if (error?.code === 'EEXIST') {
+        counter += 1;
+        continue;
+      }
+      throw error;
+    }
   }
-
-  return filename;
 }
 
 /**

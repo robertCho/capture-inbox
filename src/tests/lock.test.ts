@@ -120,6 +120,30 @@ describe('Lock Mechanism', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
+  test('empty lock file is not stolen immediately', async () => {
+    const vaultPath = join(testDir, 'vault-lock-empty');
+    const lockDir = join(vaultPath, 'inbox', '.capture-inbox-state');
+    await mkdir(lockDir, { recursive: true });
+
+    const lockPath = join(lockDir, 'operation.lock');
+    await writeFile(lockPath, '', 'utf-8');
+
+    let acquired = false;
+    const acquirePromise = acquireLock(vaultPath, 'inbox', 'waiter').then((release) => {
+      acquired = true;
+      return release;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.strictEqual(acquired, false, 'Empty lock must not be treated as immediately stale');
+
+    await rm(lockPath, { force: true });
+    const release = await acquirePromise;
+    await release();
+
+    await rm(testDir, { recursive: true, force: true });
+  });
+
   test('corrupted lock file - treated as stale', async () => {
     const vaultPath = join(testDir, 'vault-lock-6');
     const lockDir = join(vaultPath, 'inbox', '.capture-inbox-state');

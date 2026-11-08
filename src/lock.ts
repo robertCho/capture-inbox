@@ -1,6 +1,6 @@
-import { open, mkdir, rm } from 'node:fs/promises';
+import { open, mkdir, rm, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileExists, createError } from './utils.js';
+import { createError } from './utils.js';
 
 /**
  * Simple file-based lock implementation for per-inbox operation serialization
@@ -46,28 +46,55 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+async function lockMtimeAgeMs(lockPath: string): Promise<number | null> {
+  try {
+    const info = await stat(lockPath);
+    return Date.now() - info.mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Check if a lock is stale (older than LOCK_TIMEOUT_MS AND process not alive)
+ * A lock is stale only when the holder is gone or the file is abandoned.
+ * Do not treat EPERM/EBUSY/empty as stale: on Windows those happen while a
+ * live process still owns the lock (wx created the file, write/close in
+ * progress, or mandatory locking). Stealing then lets two creates share a
+ * timestamp name and overwrite one card.
  */
 async function isLockStale(lockPath: string): Promise<boolean> {
+  let content: string;
   try {
-    const { readFile } = await import('node:fs/promises');
-    const content = await readFile(lockPath, 'utf-8');
-    const lockInfo: LockInfo = JSON.parse(content);
-    const age = Date.now() - lockInfo.timestamp;
-    
-    // Lock is only stale if:
-    // 1. It's older than timeout AND
-    // 2. The owning process is no longer alive
-    if (age > LOCK_TIMEOUT_MS) {
-      return !isProcessAlive(lockInfo.pid);
+    content = await readFile(lockPath, 'utf-8');
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') {
+      return false;
     }
-    
-    return false;
+    const age = await lockMtimeAgeMs(lockPath);
+    return age !== null && age > LOCK_TIMEOUT_MS;
+  }
+
+  if (!content.trim()) {
+    const age = await lockMtimeAgeMs(lockPath);
+    return age !== null && age > LOCK_TIMEOUT_MS;
+  }
+
+  let lockInfo: LockInfo;
+  try {
+    lockInfo = JSON.parse(content) as LockInfo;
   } catch {
-    // If we can't read or parse, consider it stale
     return true;
   }
+
+  if (typeof lockInfo.pid !== 'number' || typeof lockInfo.timestamp !== 'number') {
+    return true;
+  }
+
+  if (!isProcessAlive(lockInfo.pid)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
