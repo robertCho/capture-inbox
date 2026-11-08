@@ -72,8 +72,16 @@ export async function readState(vaultPath: string, inboxSubdir: string): Promise
 
 /**
  * Write the current target state to the state file
- * Uses unique temp filename to prevent concurrent write races
- * Handles Windows EPERM on rename with retry logic
+ * 
+ * CONCURRENCY CONTRACT:
+ * - Production usage: Always called within withLock() - fully serialized, safe
+ * - Direct calls: Uses unique temp files + retry logic for robustness
+ * - Windows: Rename contention handled via exponential backoff with jitter
+ * 
+ * Implementation:
+ * - Unique temp filename prevents temp file collisions
+ * - Retry with jitter reduces thundering herd when multiple writers race
+ * - Atomic rename ensures consistent state (last writer wins)
  */
 export async function writeState(
   vaultPath: string,
@@ -96,7 +104,8 @@ export async function writeState(
     
     // Rename with retry for Windows EPERM issues
     // Windows can return EPERM if target file is briefly locked by another process
-    await renameWithRetry(tempFilePath, stateFilePath, 3, 50);
+    // Increased retries and base delay for highly concurrent scenarios
+    await renameWithRetry(tempFilePath, stateFilePath, 5, 100);
   } catch (error) {
     // Clean up temp file on error
     try {
@@ -112,6 +121,7 @@ export async function writeState(
 /**
  * Rename with retry logic for Windows compatibility
  * Windows can return EPERM on rename if target file is temporarily locked
+ * Uses exponential backoff with jitter to avoid thundering herd
  */
 async function renameWithRetry(
   source: string,
@@ -127,12 +137,18 @@ async function renameWithRetry(
       return; // Success
     } catch (error: any) {
       const isLastAttempt = attempt === maxRetries;
-      const isWindowsLockError = error.code === 'EPERM' || error.code === 'EBUSY';
+      const isWindowsLockError = error.code === 'EPERM' || error.code === 'EBUSY' || error.code === 'EACCES';
       
       // Retry only on Windows file locking errors, and only if we have retries left
       if (isWindowsLockError && !isLastAttempt) {
-        // Exponential backoff: 50ms, 100ms, 200ms
-        await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, attempt)));
+        // Exponential backoff with randomized jitter to avoid thundering herd
+        // Base delays: 100ms, 200ms, 400ms
+        // Jitter adds 0-50% random variation
+        const baseDelay = delayMs * Math.pow(2, attempt);
+        const jitter = Math.random() * baseDelay * 0.5;
+        const totalDelay = baseDelay + jitter;
+        
+        await new Promise(resolve => setTimeout(resolve, totalDelay));
         continue;
       }
       
