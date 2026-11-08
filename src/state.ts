@@ -73,6 +73,7 @@ export async function readState(vaultPath: string, inboxSubdir: string): Promise
 /**
  * Write the current target state to the state file
  * Uses unique temp filename to prevent concurrent write races
+ * Handles Windows EPERM on rename with retry logic
  */
 export async function writeState(
   vaultPath: string,
@@ -93,9 +94,9 @@ export async function writeState(
   try {
     await writeFile(tempFilePath, JSON.stringify(state, null, 2), 'utf-8');
     
-    // Rename is atomic on most systems
-    const { rename } = await import('node:fs/promises');
-    await rename(tempFilePath, stateFilePath);
+    // Rename with retry for Windows EPERM issues
+    // Windows can return EPERM if target file is briefly locked by another process
+    await renameWithRetry(tempFilePath, stateFilePath, 3, 50);
   } catch (error) {
     // Clean up temp file on error
     try {
@@ -105,6 +106,39 @@ export async function writeState(
       // Ignore cleanup errors
     }
     throw error;
+  }
+}
+
+/**
+ * Rename with retry logic for Windows compatibility
+ * Windows can return EPERM on rename if target file is temporarily locked
+ */
+async function renameWithRetry(
+  source: string,
+  target: string,
+  maxRetries: number,
+  delayMs: number
+): Promise<void> {
+  const { rename } = await import('node:fs/promises');
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await rename(source, target);
+      return; // Success
+    } catch (error: any) {
+      const isLastAttempt = attempt === maxRetries;
+      const isWindowsLockError = error.code === 'EPERM' || error.code === 'EBUSY';
+      
+      // Retry only on Windows file locking errors, and only if we have retries left
+      if (isWindowsLockError && !isLastAttempt) {
+        // Exponential backoff: 50ms, 100ms, 200ms
+        await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, attempt)));
+        continue;
+      }
+      
+      // Not a retryable error, or out of retries
+      throw error;
+    }
   }
 }
 

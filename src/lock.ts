@@ -97,8 +97,16 @@ export async function acquireLock(
     try {
       // Try to create lock file exclusively (O_EXCL flag)
       const fd = await open(lockPath, 'wx');
-      await fd.writeFile(JSON.stringify(lockInfo), 'utf-8');
-      await fd.close();
+      
+      try {
+        await fd.writeFile(JSON.stringify(lockInfo), 'utf-8');
+      } finally {
+        // Always close file descriptor, even on write error
+        await fd.close();
+        // Small delay to ensure Windows releases file handle
+        // Windows file handle release is not immediate after close()
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
 
       // Successfully acquired lock
       return async () => {
@@ -117,12 +125,15 @@ export async function acquireLock(
       // Check if lock is stale
       const stale = await isLockStale(lockPath);
       if (stale) {
-        // Remove stale lock and retry
+        // Remove stale lock with retry for Windows
+        // Windows may return EPERM if file is being released
         try {
-          await rm(lockPath, { force: true });
+          await rmWithRetry(lockPath, 3, 10);
         } catch {
-          // Ignore errors, will retry
+          // If we can't remove it, wait and let next iteration try
         }
+        // Small delay to let Windows release file handle
+        await new Promise(resolve => setTimeout(resolve, 10));
         continue;
       }
 
@@ -136,6 +147,28 @@ export async function acquireLock(
 
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, LOCK_POLL_INTERVAL_MS));
+    }
+  }
+}
+
+/**
+ * Remove file with retry for Windows EPERM
+ */
+async function rmWithRetry(path: string, maxRetries: number, delayMs: number): Promise<void> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await rm(path, { force: true });
+      return;
+    } catch (error: any) {
+      const isLastAttempt = attempt === maxRetries;
+      const isWindowsLockError = error.code === 'EPERM' || error.code === 'EBUSY';
+      
+      if (isWindowsLockError && !isLastAttempt) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      
+      throw error;
     }
   }
 }
