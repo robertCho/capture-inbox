@@ -1,12 +1,13 @@
 import { parseArgs } from 'node:util';
 import { captureScreenshot } from './capture.js';
-import type { CaptureConfig } from './types.js';
+import type { CaptureConfig, CaptureAction } from './types.js';
 
 interface CliArgs {
   values: {
     'vault-path'?: string;
     'inbox-subdir'?: string;
     'skip-open'?: boolean;
+    'action'?: string;
     help?: boolean;
   };
   positionals: string[];
@@ -24,25 +25,58 @@ ARGUMENTS:
 OPTIONS:
   --vault-path <path>       Path to the Obsidian vault (required)
   --inbox-subdir <path>     Subdirectory within vault for captures (default: "inbox")
+  --action <type>           Action type: "create" or "append" (default: "create")
   --skip-open               Don't open the card in Obsidian after creation
   --help                    Show this help message
 
+ACTIONS:
+  create    Create a new capture card (default behavior)
+            Sets this card as the current target for future append actions
+            Compatible with existing ShareX configurations
+
+  append    Append screenshot to the current target card
+            Requires a card to have been created first with --action create
+            Preserves user edits in the card
+            Opens the same card in Obsidian
+
 EXAMPLES:
-  # Basic usage (for ShareX after-capture action)
+  # Create new card (first hotkey - default action)
   capture-inbox "C:\\Users\\user\\Screenshots\\capture.png" --vault-path "C:\\Users\\user\\ObsidianVault"
 
-  # Custom inbox subdirectory
-  capture-inbox capture.png --vault-path "/path/to/vault" --inbox-subdir "daily/captures"
+  # Append to current card (second hotkey)
+  capture-inbox "C:\\Users\\user\\Screenshots\\capture.png" --vault-path "C:\\Users\\user\\ObsidianVault" --action append
+
+  # Create with explicit action flag
+  capture-inbox screenshot.png --vault-path "/path/to/vault" --action create
 
   # Testing without opening Obsidian
   capture-inbox test.png --vault-path "./test-vault" --skip-open
 
 SHAREX INTEGRATION:
-  Configure ShareX to run this command after capture:
+  Two-hotkey setup for create and append:
+
+  Hotkey 1 (e.g., Ctrl+PrintScreen): Create new card
+    Action: capture-inbox "$input" --vault-path "YOUR_VAULT_PATH"
+
+  Hotkey 2 (e.g., Ctrl+Shift+PrintScreen): Append to current card
+    Action: capture-inbox "$input" --vault-path "YOUR_VAULT_PATH" --action append
+
+  Configuration steps:
   1. Open ShareX → Task settings → Actions
-  2. Add action: capture-inbox "$input" --vault-path "YOUR_VAULT_PATH"
-  3. Replace YOUR_VAULT_PATH with your actual Obsidian vault location
+  2. Add first action for create (use default or explicit --action create)
+  3. Add second action for append (use --action append)
+  4. Assign different hotkeys to each capture profile
+  5. Replace YOUR_VAULT_PATH with your actual Obsidian vault location
+
   Note: Use $input (ShareX Actions placeholder for captured file)
+
+STATE MANAGEMENT:
+  The tool stores current target state in:
+    <vault>/<inbox>/.capture-inbox-state/current-target.json
+
+  This file tracks which card is the current append target.
+  It is automatically created when you use --action create.
+  You can delete this file to reset the current target.
 `;
 
 export async function main(argv: string[]): Promise<void> {
@@ -55,6 +89,7 @@ export async function main(argv: string[]): Promise<void> {
         'vault-path': { type: 'string' },
         'inbox-subdir': { type: 'string' },
         'skip-open': { type: 'boolean', default: false },
+        'action': { type: 'string' },
         'help': { type: 'boolean', default: false },
       },
       allowPositionals: true,
@@ -82,17 +117,27 @@ export async function main(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
+  // Validate action parameter
+  const action = args.values['action'] || 'create';
+  if (action !== 'create' && action !== 'append') {
+    console.error(`Error: Invalid action "${action}". Must be "create" or "append"`);
+    console.log(USAGE);
+    process.exit(1);
+  }
+
   const screenshotPath = args.positionals[0];
   const config: CaptureConfig = {
     vaultPath: args.values['vault-path'],
     inboxSubdir: args.values['inbox-subdir'] || 'inbox',
     skipOpen: args.values['skip-open'],
+    action: action as CaptureAction,
   };
 
   try {
     const result = await captureScreenshot(screenshotPath, config);
     
     console.log('✓ Capture successful');
+    console.log(`  Action: ${action}`);
     console.log(`  Image saved: ${result.imagePath}`);
     console.log(`  Card saved: ${result.cardPath}`);
     
@@ -121,6 +166,13 @@ export async function main(argv: string[]): Promise<void> {
     } else if (err.code === 'RELATIVE_PATH') {
       console.error('  Paths must be absolute');
       console.error('  Use full paths like C:\\\\Users\\\\user\\\\vault (Windows) or /home/user/vault (Unix)');
+    } else if (err.code === 'NO_TARGET') {
+      console.error('  No current target card exists');
+      console.error('  Create a new card first with: --action create');
+      console.error('  Then you can append to it with: --action append');
+    } else if (err.code === 'TARGET_MISSING') {
+      console.error('  The current target card has been deleted or moved');
+      console.error('  Create a new card with: --action create');
     }
     
     process.exit(1);

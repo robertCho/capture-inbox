@@ -1,7 +1,7 @@
 {
   "name": "capture-inbox",
-  "version": "0.1.0",
-  "description": "CLI tool to capture screenshots from ShareX and create Obsidian cards",
+  "version": "0.2.0",
+  "description": "CLI tool to capture screenshots from ShareX and create/append to Obsidian cards",
   "main": "dist/index.js",
   "type": "module",
   "bin": {

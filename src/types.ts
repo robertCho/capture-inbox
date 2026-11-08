@@ -1,7 +1,10 @@
+export type CaptureAction = 'create' | 'append';
+
 export interface CaptureConfig {
   vaultPath: string;
   inboxSubdir: string;
   skipOpen?: boolean;
+  action?: CaptureAction;
 }
 
 export interface CaptureResult {
