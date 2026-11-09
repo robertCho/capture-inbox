@@ -1,6 +1,6 @@
 export type CaptureAction = 'create' | 'append';
 
-export type ProvenanceSource = 'cli' | 'env' | 'hook';
+export type ProvenanceSource = 'cli' | 'env' | 'hook' | 'armed';
 
 export interface CaptureConfig {
   vaultPath: string;

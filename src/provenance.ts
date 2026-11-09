@@ -1,6 +1,6 @@
 import { createError } from './utils.js';
 
-export type ProvenanceSource = 'cli' | 'env' | 'hook';
+export type ProvenanceSource = 'cli' | 'env' | 'hook' | 'armed';
 
 export interface SessionProvenance {
   sessionId: string | null;
@@ -34,7 +34,12 @@ export function validateSessionId(raw: string, origin: string): string {
   return sessionId;
 }
 
-export function parseHookSessionId(hookJson: string): string {
+export interface HookEventInput {
+  sessionId: string;
+  hookEventName: string;
+}
+
+export function parseHookEvent(hookJson: string): HookEventInput {
   let parsed: unknown;
   try {
     parsed = JSON.parse(hookJson);
@@ -46,12 +51,19 @@ export function parseHookSessionId(hookJson: string): string {
     throw createError('Hook JSON must be an object with session_id', 'INVALID_HOOK_INPUT');
   }
 
-  const sessionId = (parsed as { session_id?: unknown }).session_id;
-  if (typeof sessionId !== 'string') {
+  const body = parsed as { session_id?: unknown; hook_event_name?: unknown; transcript_path?: unknown };
+  if (typeof body.session_id !== 'string') {
     throw createError('Hook JSON missing session_id', 'INVALID_HOOK_INPUT');
   }
 
-  return validateSessionId(sessionId, 'hook stdin session_id');
+  return {
+    sessionId: validateSessionId(body.session_id, 'hook stdin session_id'),
+    hookEventName: typeof body.hook_event_name === 'string' ? body.hook_event_name : '',
+  };
+}
+
+export function parseHookSessionId(hookJson: string): string {
+  return parseHookEvent(hookJson).sessionId;
 }
 
 /**

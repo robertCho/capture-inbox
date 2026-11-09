@@ -1,35 +1,31 @@
-# Claude Code hook usage (official stdin contract)
+# Opt-in Claude Code hooks (liveness only)
 
-Use this only when `capture-inbox` is launched as a Claude Code **hook command**.
-Hooks receive JSON on stdin with `session_id`. That is an official public field
-([hooks reference](https://code.claude.com/docs/en/hooks)). This tool reads
-`session_id` and ignores `transcript_path`.
+These handlers read official hook JSON from stdin (`session_id`, `hook_event_name`).
+They never read `transcript_path`. They never arm a session and never pick
+“latest/only live”.
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node /ABS/PATH/capture-inbox/bin/capture-inbox.js /ABS/PATH/screenshot.png --vault-path /ABS/PATH/vault --from-hook --skip-open"
-          }
-        ]
-      }
-    ]
-  }
-}
+This repository will **not** write your `~/.claude/settings.json`. Merge yourself.
+
+## Print a fragment
+
+```bash
+node bin/capture-inbox.js --print-hooks --vault-path "C:\ABS\YOUR_VAULT"
 ```
 
-Replace the screenshot path with a real file your hook already has. A hook does
-not invent a screenshot; `--from-hook` only associates the official `session_id`.
+## Merge without deleting existing hooks
 
-Child processes of Claude Code (Bash/PowerShell tools, hook commands, stdio MCP)
-also receive `CLAUDE_CODE_SESSION_ID`. In that case `--from-hook` is optional:
-the CLI reads the env var automatically.
+```bash
+node bin/capture-inbox.js --merge-hooks --settings-file "C:\ABS\path\to\settings.json" --vault-path "C:\ABS\YOUR_VAULT"
+```
 
-ShareX After Capture is not a Claude Code child. Do not add a SessionStart hook
-that writes a "latest session" file for ShareX — multiple CLI sessions would
-make "latest" ambiguous, and this tool refuses that guess.
+`--settings-file` is required and is never defaulted to a home-directory path.
+Re-running merge is idempotent (our `--hook-event` command is left as-is).
+
+## Then arm from inside Claude Code
+
+```bash
+node bin/capture-inbox.js --arm --vault-path "C:\ABS\YOUR_VAULT"
+```
+
+ShareX After Capture does not change: it stamps the unique live armed ID, or
+stays source-less if none/stale/ambiguous.

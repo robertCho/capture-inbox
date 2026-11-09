@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
+import { join } from 'node:path';
 import { fileExists, validatePath, createError } from './utils.js';
 
 /**
@@ -17,7 +17,7 @@ export interface CaptureState {
 }
 
 const STATE_VERSION = '1.0.0';
-const STATE_DIR = '.capture-inbox-state';
+export const STATE_DIR = '.capture-inbox-state';
 const STATE_FILE = 'current-target.json';
 
 /**
@@ -31,8 +31,29 @@ function getStateFilePath(vaultPath: string, inboxSubdir: string): string {
 /**
  * Get the state directory path
  */
-function getStateDirPath(vaultPath: string, inboxSubdir: string): string {
+export function getStateDirPath(vaultPath: string, inboxSubdir: string): string {
   return join(vaultPath, inboxSubdir, STATE_DIR);
+}
+
+/**
+ * Atomic JSON write used by target state and the session registry.
+ */
+export async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  const uniqueSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const tempFilePath = `${filePath}.tmp.${uniqueSuffix}`;
+
+  try {
+    await writeFile(tempFilePath, JSON.stringify(value, null, 2), 'utf-8');
+    await renameWithRetry(tempFilePath, filePath, 5, 100);
+  } catch (error) {
+    try {
+      const { unlink } = await import('node:fs/promises');
+      await unlink(tempFilePath);
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
 }
 
 /**
@@ -91,31 +112,8 @@ export async function writeState(
   const stateDir = getStateDirPath(vaultPath, inboxSubdir);
   const stateFilePath = getStateFilePath(vaultPath, inboxSubdir);
   
-  // Ensure state directory exists
   await mkdir(stateDir, { recursive: true });
-  
-  // Write state file atomically with unique temp filename per operation
-  // This prevents race where multiple processes overwrite same .tmp file
-  const uniqueSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const tempFilePath = `${stateFilePath}.tmp.${uniqueSuffix}`;
-  
-  try {
-    await writeFile(tempFilePath, JSON.stringify(state, null, 2), 'utf-8');
-    
-    // Rename with retry for Windows EPERM issues
-    // Windows can return EPERM if target file is briefly locked by another process
-    // Increased retries and base delay for highly concurrent scenarios
-    await renameWithRetry(tempFilePath, stateFilePath, 5, 100);
-  } catch (error) {
-    // Clean up temp file on error
-    try {
-      const { unlink } = await import('node:fs/promises');
-      await unlink(tempFilePath);
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw error;
-  }
+  await writeJsonAtomic(stateFilePath, state);
 }
 
 /**

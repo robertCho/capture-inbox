@@ -253,35 +253,39 @@ Spaces in refs are percent-encoded; unicode is kept as UTF-8. Vault or inbox nam
 
 ## Claude Code session provenance
 
-A plain screenshot has no session ID. This tool **never** guesses the latest/active Claude Code session, window title, or transcript.
+A plain screenshot has no session ID. This tool **never** guesses the latest/active Claude Code session, window title, or transcript, and **never** stamps the only live registry entry.
 
-**Official sources only** ([env vars](https://code.claude.com/docs/en/env-vars), [hooks](https://code.claude.com/docs/en/hooks)):
+**How a ShareX capture gets the correct ID (no typing IDs):**
 
-| Source | When it is present | Flag / field |
-| --- | --- | --- |
-| `CLAUDE_CODE_SESSION_ID` | Claude Code child processes (Bash/PowerShell tools, hook commands, stdio MCP) | read automatically |
-| Hook JSON `session_id` | Command hooks receive this on stdin | `--from-hook` |
-| `--session-id` | Caller already knows the ID | explicit, never inferred |
+1. **One-time, opt-in hooks** (you merge; this tool does not write `~/.claude` by itself):
+   ```bash
+   node bin/capture-inbox.js --print-hooks --vault-path "C:\<YOUR_VAULT>"
+   node bin/capture-inbox.js --merge-hooks --settings-file "C:\<ABS>\settings.json" --vault-path "C:\<YOUR_VAULT>"
+   ```
+   `--merge-hooks` **adds** SessionStart / SessionEnd / UserPromptSubmit handlers and leaves every existing hook in place. Pass `--settings-file` explicitly (never inferred). Hooks update **liveness** in `<inbox>/.capture-inbox-state/session-registry.json` only. They do **not** arm a session.
 
-Matching sources are accepted. Disagreeing sources fail with `SESSION_ID_CONFLICT` (no silent pick). Source-less captures are valid and leave session fields off the card.
+2. **Each Claude Code discussion you want on cards:** inside that session run:
+   ```bash
+   node bin/capture-inbox.js --arm --vault-path "C:\<YOUR_VAULT>"
+   ```
+   `--arm` reads official `CLAUDE_CODE_SESSION_ID` (no copy/paste). It disarms any previous arm in this vault/inbox. Switching discussions: run `--arm` again in the other session.
 
-On **append**, the card keeps the provenance it was created with. A source-less ShareX append does not clear a stored ID. A different incoming ID fails with `SESSION_MISMATCH`. An incoming ID is not written onto a source-less card.
+3. **ShareX create/append stays the same** (`$input` + `--vault-path`, optional `--action append`). If a unique **live, unexpired, explicitly armed** session exists, the card is stamped with that ID. Missing, ended, stale, or ambiguous arms → **source-less** (never a wrong ID).
 
-Stored IDs are metadata only. Resume later with `claude --resume <session-id>`. This does **not** jump to a historical message or auto-fork a session.
+**Official child-process sources still win when present** ([env vars](https://code.claude.com/docs/en/env-vars), [hooks](https://code.claude.com/docs/en/hooks)):
 
-### Product decision: ShareX cannot auto-bind a session
+| Source | When it is present |
+| --- | --- |
+| `CLAUDE_CODE_SESSION_ID` | Claude Code child processes |
+| Hook JSON `session_id` | `--from-hook` capture |
+| `--session-id` | Explicit override |
+| Armed registry | ShareX-equivalent CLI with no child-process ID |
 
-ShareX After Capture is **not** a Claude Code child, so it does not receive `CLAUDE_CODE_SESSION_ID`. There is no official ShareX placeholder for a Claude session ID.
+On **append**, the card keeps create-time provenance. A different incoming armed ID is `SESSION_MISMATCH` (checked before write). Source-less append does not clear a stored ID.
 
-A "write latest session to a sidecar" hook would be unsafe with multiple concurrent CLI sessions and is **not implemented**.
+Stored IDs are metadata only. Resume later with `claude --resume <session-id>`. No historical-message jump, no auto-fork.
 
-**What this means in practice:**
-
-- ShareX create/append → source-less cards unless you pass `--session-id` in that ShareX action (one hardcoded ID; wrong across multiple sessions).
-- Automatic ID stamping works when `capture-inbox` is spawned by Claude Code (env) or as a hook command (`--from-hook` plus a screenshot path).
-- That is the automatic integration. `--session-id` is an explicit extra path, not a stand-in for ShareX auto-linkage.
-
-See `examples/claude-code-hooks.md` for the hook command shape.
+**Tradeoff (explicit, not a guess):** captures follow the session you last `--arm`'d, not the session whose window is focused and not the most recently prompted session. Forgetting to re-arm after switching Claude sessions keeps the previous explicit arm. `--disarm` returns to source-less. Auto-arming on every UserPromptSubmit is **not** implemented (that would be “latest prompt”).
 
 ---
 
@@ -295,7 +299,7 @@ capture-inbox <screenshot-path> --vault-path <path> [options]
 
 ### Arguments
 
-- `<screenshot-path>` (required): Absolute path to the screenshot file
+- `<screenshot-path>` (required for create/append): Absolute path to the screenshot file
 
 ### Options
 
@@ -304,6 +308,9 @@ capture-inbox <screenshot-path> --vault-path <path> [options]
 - `--inbox-subdir <path>` (optional): Subdirectory within vault (default: `inbox`)
 - `--session-id <id>` (optional): Explicit Claude Code session ID (never guessed)
 - `--from-hook` (optional): Read official hook JSON from stdin and use `session_id`
+- `--hook-event` (optional): Apply official hook JSON to the liveness registry (does not arm)
+- `--arm` / `--disarm` (optional): Set or clear the ShareX capture session for this vault/inbox
+- `--print-hooks` / `--merge-hooks` / `--settings-file` (optional): Opt-in hook setup; merge never infers a home path
 - `--skip-open` (optional): Don't open Obsidian after capture
 - `--help`: Show help message
 
@@ -487,7 +494,7 @@ Keep investigation notes here; append will not overwrite them.
 npm test
 ```
 
-**Coverage**: 127 tests, PR2 baseline 84 retained (one original relative-path assertion updated for `attachments/` refs)
+**Coverage**: 139 tests, PR2 baseline 84 retained (one original relative-path assertion updated for `attachments/` refs)
 
 **Test Inventory**:
 - **PR2 baseline (84)**: All retained
@@ -499,11 +506,13 @@ npm test
   - Lock mechanism: 8 tests
   - State write races: 5 tests
   - Subprocess races: 4 tests
-- **v0.3.0 tests (43)**:
+- **v0.3.0 tests**:
   - Session provenance: 23 tests (official sources, conflicts, per-card append, no guessing)
   - Attachments / legacy: 8 tests (subfolder, portable refs, flat-card append, no migration)
   - My Notes: 7 tests (empty on create, preserved on append, not invented on legacy)
   - CLI smoke: 5 tests (source-less, `--session-id`, env, `--from-hook`, conflict)
+  - Unique-name / empty-lock regressions: 2 tests
+  - Session association workflow: hook liveness, `--arm`, ShareX-equivalent CLI, isolation, stale/ambiguous/mismatch, notes, merge-hooks
 
 **Test Categories**:
 - Create action: File creation, collision handling, path validation
@@ -591,7 +600,7 @@ rm -rf test-vault
 4. **Single target per vault/inbox**: Only one "current" card per inbox
 5. **Target indication**: Relies on Obsidian auto-open (no screen notification)
 6. **Lock timeout**: Operations fail after 60s if lock acquisition times out (rare)
-7. **ShareX has no official Claude session channel**: source-less unless `--session-id` is passed on purpose
+7. **ShareX stamps only an explicitly armed live session**: missing/stale/ambiguous/ended stay source-less; switching Claude sessions requires `--arm` again
 8. **No historical-message jump / auto-fork**: session ID is stored, not used to resume a turn automatically
 
 ### Windows Testing
@@ -605,8 +614,10 @@ rm -rf test-vault
 
 - GUI interface
 - AI/OCR/provider integration
-- Guessing the latest/active Claude Code session
+- Guessing the latest/active/only-live Claude Code session
+- Auto-arming from UserPromptSubmit or window title
 - Reading Claude transcripts, databases, or app-internal config
+- Writing `~/.claude/settings.json` unless you pass `--merge-hooks --settings-file`
 - Automatic migration of legacy flat images
 - Clipboard reading
 - Auto-grouping heuristics
@@ -679,6 +690,8 @@ capture-inbox/
 │   ├── card.ts             # Card markdown (My Notes, image insert)
 │   ├── attachments.ts      # inbox/attachments paths and markdown refs
 │   ├── provenance.ts       # Official Claude Code session ID resolution
+│   ├── session-registry.ts # Per-inbox armed session association
+│   ├── hooks-setup.ts      # Opt-in hook fragment + merge (preserves existing)
 │   ├── cli.ts              # Command-line interface
 │   ├── state.ts            # State management (target tracking)
 │   ├── types.ts            # TypeScript interfaces

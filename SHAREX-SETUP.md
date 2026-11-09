@@ -238,9 +238,13 @@ Before reporting issues, verify:
 
 ## Session ID and attachments (v0.3.0)
 
-ShareX After Capture does **not** inherit `CLAUDE_CODE_SESSION_ID`. Leave session
-unset (source-less card) unless you intentionally pass `--session-id` in the
-action arguments. Do not point ShareX at a "latest session" file.
+ShareX After Capture does **not** inherit `CLAUDE_CODE_SESSION_ID`. Do not put a
+typed ID in the ShareX action.
+
+Instead: merge opt-in hooks (see `examples/claude-code-hooks.md`), then inside
+the Claude Code session you want on cards run `capture-inbox --arm --vault-path ...`.
+ShareX create/append stamps that unique live armed ID, or stays source-less if
+none/stale/ambiguous. Re-arm when you switch Claude sessions.
 
 New images are stored in `<vault>/<inbox>/attachments/`. Cards stay in the inbox
 root. Existing same-folder cards still append.
