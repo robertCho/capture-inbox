@@ -111,27 +111,52 @@ describe('Subprocess Race Conditions', () => {
     const screenshotPath = join(fixturesDir, 'test-image.png');
     const command = `node bin/capture-inbox.js "${screenshotPath}" --vault-path "${vaultPath}" --skip-open --action create`;
 
-    // Fire 10 concurrent creates (stress test)
-    const processes = Array.from({ length: 10 }, () => 
-      execCommand(command, { cwd: process.cwd() })
+    // Fire 10 concurrent creates (stress test). Keep true concurrency.
+    const processes = Array.from({ length: 10 }, () =>
+      execCommand(command, { cwd: process.cwd() }).then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason) => ({ status: 'rejected' as const, reason })
+      )
     );
 
-    const results = await Promise.all(processes);
-    
-    // All 10 should succeed
-    assert.strictEqual(results.length, 10);
-    results.forEach(({ stdout }) => {
-      assert.ok(stdout.includes('✓ Capture successful'));
-    });
+    const settled = await Promise.all(processes);
+    const rejected = settled.filter((item) => item.status === 'rejected');
+    const fulfilled = settled.filter((item) => item.status === 'fulfilled');
 
-    // Verify 10 unique cards created
+    assert.strictEqual(
+      rejected.length,
+      0,
+      `All 10 creates must succeed. Failures: ${rejected.map((item) =>
+        item.status === 'rejected' ? String(item.reason) : ''
+      ).join(' | ')}`
+    );
+    assert.strictEqual(fulfilled.length, 10);
+
+    const cardPathsFromStdout: string[] = [];
+    for (const item of fulfilled) {
+      if (item.status !== 'fulfilled') continue;
+      const { stdout, stderr } = item.value;
+      assert.ok(
+        stdout.includes('✓ Capture successful'),
+        `Expected success message, stdout=${stdout} stderr=${stderr}`
+      );
+      const match = stdout.match(/Card saved: (.+)/);
+      assert.ok(match, `Missing Card saved line. stdout=${stdout} stderr=${stderr}`);
+      cardPathsFromStdout.push(match[1].trim());
+    }
+
+    assert.strictEqual(
+      new Set(cardPathsFromStdout).size,
+      10,
+      `Expected 10 unique card paths from CLI, got ${new Set(cardPathsFromStdout).size}: ${cardPathsFromStdout.join(', ')}`
+    );
+
     const inboxDir = join(vaultPath, 'inbox');
     const allFiles = await readdir(inboxDir);
     const cardFiles = allFiles.filter(f => f.endsWith('.md'));
-    assert.strictEqual(cardFiles.length, 10, 
-      `Expected 10 cards, got ${cardFiles.length}`);
+    assert.strictEqual(cardFiles.length, 10,
+      `Expected 10 cards, got ${cardFiles.length}. dir=${allFiles.join(', ')} cliCards=${cardPathsFromStdout.join(', ')}`);
 
-    // No temp files
     const stateDir = join(vaultPath, 'inbox', '.capture-inbox-state');
     const stateFiles = await readdir(stateDir);
     const tempFiles = stateFiles.filter(f => f.includes('.tmp'));

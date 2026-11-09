@@ -64,10 +64,11 @@ Note the full path to this repository. For example:
 
 1. Use ShareX to capture a region (default: `Print Screen`)
 2. Check if:
-   - Screenshot appears in your vault's `inbox` folder
-   - A Markdown card is created with the same timestamp
+   - Screenshot appears in your vault's `inbox/attachments/` folder
+   - A Markdown card is created in `inbox/` with a relative `attachments/...` image ref
    - Obsidian opens automatically with the new card
    - The embedded image displays correctly
+   - The card is source-less (no `claudeCodeSessionId`) unless you passed `--session-id`
 
 ## ShareX Actions Placeholder Variables
 
@@ -234,6 +235,19 @@ Before reporting issues, verify:
 - [ ] Vault path is absolute and exists
 - [ ] You have write permissions to vault directory
 - [ ] Obsidian URI protocol works (test in browser)
+
+## Session ID and attachments (v0.3.0)
+
+ShareX After Capture does **not** inherit `CLAUDE_CODE_SESSION_ID`. Do not put a
+typed ID in the ShareX action.
+
+Instead: merge opt-in hooks (see `examples/claude-code-hooks.md`), then inside
+the Claude Code session you want on cards run `capture-inbox --arm --vault-path ...`.
+ShareX create/append stamps that unique live armed ID, or stays source-less if
+none/stale/ambiguous. Re-arm when you switch Claude sessions.
+
+New images are stored in `<vault>/<inbox>/attachments/`. Cards stay in the inbox
+root. Existing same-folder cards still append.
 
 ## Getting Help
 

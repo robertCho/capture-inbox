@@ -81,6 +81,19 @@ describe('Utils', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
+  test('generateUniqueFilename - concurrent reservations are unique', async () => {
+    const dir = join(testDir, 'unique-race');
+    await mkdir(dir, { recursive: true });
+
+    const names = await Promise.all(
+      Array.from({ length: 20 }, () => generateUniqueFilename(dir, 'capture_same', '.md'))
+    );
+
+    assert.strictEqual(new Set(names).size, 20, `Expected 20 unique names, got ${new Set(names).size}: ${names.join(', ')}`);
+
+    await rm(testDir, { recursive: true, force: true });
+  });
+
   test('encodeObsidianUri - generates valid URI', async () => {
     const vaultPath = '/home/user/MyVault';
     const filePath = '/home/user/MyVault/inbox/note.md';

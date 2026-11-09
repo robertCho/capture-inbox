@@ -1,5 +1,5 @@
 import { copyFile, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { join, extname, resolve, dirname, basename } from 'node:path';
+import { join, extname, resolve } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { CaptureConfig, CaptureResult } from './types.js';
@@ -17,6 +17,9 @@ import {
   validateTargetForAppend,
 } from './state.js';
 import { withLock } from './lock.js';
+import { prepareAttachmentPath } from './attachments.js';
+import { appendImageToCard, generateCardContent, readCardSessionId } from './card.js';
+import { assertAppendProvenance } from './provenance.js';
 
 const execAsync = promisify(exec);
 
@@ -45,41 +48,46 @@ export async function captureScreenshot(
   await mkdir(inboxPath, { recursive: true });
 
   const action = config.action || 'create';
+  const incomingSessionId = config.sessionId ?? null;
 
   // Serialize all operations per inbox to prevent lost updates
   return await withLock(config.vaultPath, config.inboxSubdir, action, async () => {
     if (action === 'append') {
-      return await appendToCard(screenshotPath, config, inboxPath);
+      return await appendToCard(screenshotPath, config, inboxPath, incomingSessionId);
     } else {
-      return await createNewCard(screenshotPath, config, inboxPath);
+      return await createNewCard(screenshotPath, config, inboxPath, incomingSessionId);
     }
   });
 }
 
 /**
- * Create a new card (existing behavior)
+ * Create a new card. Images go in inbox/attachments/; the card stays in inbox/.
  */
 async function createNewCard(
   screenshotPath: string,
   config: CaptureConfig,
-  inboxPath: string
+  inboxPath: string,
+  sessionId: string | null
 ): Promise<CaptureResult> {
   const imageExtension = extname(screenshotPath);
   const baseTimestamp = generateTimestampFilename('').slice(0, -1);
-  
-  const imageFilename = await generateUniqueFilename(inboxPath, baseTimestamp, imageExtension);
+
+  const attachment = await prepareAttachmentPath(
+    inboxPath,
+    config.vaultPath,
+    baseTimestamp,
+    imageExtension
+  );
   const cardFilename = await generateUniqueFilename(inboxPath, baseTimestamp, '.md');
-
-  const imagePath = join(inboxPath, imageFilename);
   const cardPath = join(inboxPath, cardFilename);
+  validatePath(cardPath, config.vaultPath);
 
-  await copyFile(screenshotPath, imagePath);
+  await copyFile(screenshotPath, attachment.absolutePath);
 
-  const cardContent = generateCardContent(imageFilename);
+  const cardContent = generateCardContent(attachment.markdownRef, sessionId);
   await writeFile(cardPath, cardContent, 'utf-8');
 
-  // Store this as the current target
-  await setCurrentTarget(config.vaultPath, config.inboxSubdir, cardPath, imagePath);
+  await setCurrentTarget(config.vaultPath, config.inboxSubdir, cardPath, attachment.absolutePath);
 
   let opened = false;
   if (!config.skipOpen) {
@@ -87,36 +95,40 @@ async function createNewCard(
   }
 
   return {
-    imagePath,
+    imagePath: attachment.absolutePath,
     cardPath,
     opened,
+    sessionId,
   };
 }
 
 /**
- * Append a screenshot to the current target card
+ * Append a screenshot to the current target card.
+ * New images always go to attachments/; legacy same-folder image refs are left untouched.
  */
 async function appendToCard(
   screenshotPath: string,
   config: CaptureConfig,
-  inboxPath: string
+  inboxPath: string,
+  incomingSessionId: string | null
 ): Promise<CaptureResult> {
-  // Validate that we have a current target
   const target = await validateTargetForAppend(config.vaultPath, config.inboxSubdir);
+  const currentContent = await readFile(target.cardPath, 'utf-8');
+  const cardSessionId = readCardSessionId(currentContent);
+  const sessionId = assertAppendProvenance(cardSessionId, incomingSessionId);
 
-  // Copy the new screenshot with unique filename
   const imageExtension = extname(screenshotPath);
   const baseTimestamp = generateTimestampFilename('').slice(0, -1);
-  const imageFilename = await generateUniqueFilename(inboxPath, baseTimestamp, imageExtension);
-  const imagePath = join(inboxPath, imageFilename);
+  const attachment = await prepareAttachmentPath(
+    inboxPath,
+    config.vaultPath,
+    baseTimestamp,
+    imageExtension
+  );
 
-  await copyFile(screenshotPath, imagePath);
+  await copyFile(screenshotPath, attachment.absolutePath);
 
-  // Read the current card content
-  const currentContent = await readFile(target.cardPath, 'utf-8');
-
-  // Append the new image to the card, preserving user edits
-  const updatedContent = appendImageToCard(currentContent, imageFilename);
+  const updatedContent = appendImageToCard(currentContent, attachment.markdownRef);
   await writeFile(target.cardPath, updatedContent, 'utf-8');
 
   let opened = false;
@@ -125,53 +137,11 @@ async function appendToCard(
   }
 
   return {
-    imagePath,
+    imagePath: attachment.absolutePath,
     cardPath: target.cardPath,
     opened,
+    sessionId,
   };
-}
-
-/**
- * Generates the Markdown content for the capture card
- */
-function generateCardContent(imageFilename: string): string {
-  const timestamp = new Date().toISOString();
-  
-  return `---
-created: ${timestamp}
-tags: [capture, inbox]
----
-
-# Capture ${timestamp.split('T')[0]}
-
-![Screenshot](${imageFilename})
-
-## OCR Text
-*Not yet implemented*
-
-## AI Summary
-*Not yet implemented*
-`;
-}
-
-/**
- * Appends a new image to an existing card, preserving user edits
- * Inserts the new image before the "## OCR Text" section if found,
- * otherwise appends at the end
- */
-function appendImageToCard(currentContent: string, imageFilename: string): string {
-  const newImageLine = `\n![Screenshot](${imageFilename})\n`;
-  
-  // Try to insert before the OCR Text section to preserve structure
-  const ocrSectionIndex = currentContent.indexOf('## OCR Text');
-  
-  if (ocrSectionIndex !== -1) {
-    // Insert before OCR section
-    return currentContent.slice(0, ocrSectionIndex) + newImageLine + '\n' + currentContent.slice(ocrSectionIndex);
-  } else {
-    // OCR section not found (user might have deleted it), append at end
-    return currentContent.trimEnd() + '\n' + newImageLine;
-  }
 }
 
 /**
@@ -189,7 +159,7 @@ async function openInObsidian(vaultPath: string, cardPath: string): Promise<bool
       await execAsync(`xdg-open "${uri}"`);
     }
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }
